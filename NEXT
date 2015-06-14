@@ -1,0 +1,6 @@
+Be able to send and receive all messages
+*** Better error handling code ***
+Loop in PeerConnector creating connections and ensuring they are still valid
+ - States on a connection
+Send responses back to the same peer
+

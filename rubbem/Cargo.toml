@@ -3,6 +3,9 @@ name = "rubbem"
 version = "0.1.0"
 authors = ["Chris Greenaway"]
 
+[dependencies.bm_client]
+path = "../bm_client"
+
 [dependencies.gtk]
 git = "https://github.com/rust-gnome/gtk.git"
 features = ["gtk_3_6"]

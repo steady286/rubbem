@@ -1,8 +1,13 @@
 extern crate gtk;
+extern crate bm_client;
 
 use gtk::traits::*;
+use bm_client::BMClient;
 
 fn main() {
+    let bm_client = BMClient::new();
+    bm_client.start();
+
     match gtk::init() {
         Err(_) => println!("Cannot start because GTK is not working / available."),
         Ok(_) => gtk_main()
