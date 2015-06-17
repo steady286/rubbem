@@ -8,7 +8,6 @@ mod config;
 mod crypto;
 mod known_nodes;
 mod message;
-mod parse;
 mod peer;
 mod persist;
 
@@ -35,6 +34,9 @@ pub struct BMClient {
 
 impl BMClient {
     pub fn new() -> BMClient {
+        // Move this to a Result returned from new()
+        // assert!(usize::max_value() >= u32::max_value(), "You must use at least a 32-bit system");
+
         let config = Rc::new(Box::new(Config::new()));
         let persister: Rc<RwLock<Box<Persister>>> = Rc::new(RwLock::new(Box::new(MemoryPersister::new())));
         let known_nodes = Rc::new(Box::new(KnownNodes::new(persister.clone())));
@@ -51,7 +53,6 @@ impl BMClient {
 
         let mut rng: Box<OsRng> = Box::new(OsRng::new().unwrap());
         let nonce = rng.next_u64();
-        let user_agent = self.config.user_agent();
 
         PeerConnector::new(self.config.clone(), self.known_nodes.clone(), nonce).start();
     }

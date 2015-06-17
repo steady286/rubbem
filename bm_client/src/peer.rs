@@ -1,15 +1,11 @@
 use config::Config;
 use known_nodes::KnownNodes;
-use message::{Message, VersionMessage};
-use parse::{MessageByteReader,MessageReader};
+use message::{Message,MessageListener,MessageReader,VersionMessage};
 use std::io::{Error,Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
 use std::rc::Rc;
 use std::thread::Builder;
-
-pub trait MessageListener : Send {
-    fn message(&self, message: Box<Message>);
-}
+use time::get_time;
 
 pub struct PrintListener;
 
@@ -70,18 +66,19 @@ impl Connection {
 }
 
 fn read(tcp_stream: TcpStream, listener: Box<MessageListener>) {
-    let message_byte_listener = Box::new(MessageReader::new(listener));
-    let mut message_byte_reader = MessageByteReader::new(Box::new(tcp_stream), message_byte_listener);
+    let mut message_byte_reader = MessageReader::new(Box::new(tcp_stream), listener);
     message_byte_reader.start();
 }
 
 struct ConnectionFactory {
+    config: Rc<Box<Config>>,
     nonce: u64
 }
 
 impl ConnectionFactory {
-    fn new(nonce: u64) -> ConnectionFactory {
+    fn new(config: Rc<Box<Config>>, nonce: u64) -> ConnectionFactory {
         ConnectionFactory {
+            config: config,
             nonce: nonce
         }
     }
@@ -90,9 +87,9 @@ impl ConnectionFactory {
         let mut connection = Connection::new(peer_addr).unwrap();
 
         let our_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8555));
-        let user_agent = "Rubbem".to_string();
+        let user_agent = self.config.user_agent().to_string();
         let stream_numbers = vec![ 1 ];
-        let version_message = VersionMessage::new(peer_addr, our_addr, self.nonce, user_agent, stream_numbers);
+        let version_message = VersionMessage::new(3, 1, get_time(), peer_addr, our_addr, self.nonce, user_agent, stream_numbers);
 
         connection.send(Box::new(version_message));
         match connection.listen(Box::new(PrintListener::new())) {
@@ -114,9 +111,9 @@ impl PeerConnector
 {
     pub fn new(config: Rc<Box<Config>>, known_nodes: Rc<Box<KnownNodes>>, nonce: u64) -> PeerConnector {
         PeerConnector {
-            config: config,
+            config: config.clone(),
             known_nodes: known_nodes,
-            connection_factory: ConnectionFactory::new(nonce)
+            connection_factory: ConnectionFactory::new(config, nonce)
         }
     }
 
