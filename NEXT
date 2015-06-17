@@ -1,5 +1,4 @@
 Be able to send and receive all messages
-Test roundtripping messages write then read (vice versa)
 Loop in PeerConnector creating connections and ensuring they are still valid
  - States on a connection
 Send responses back to the same peer

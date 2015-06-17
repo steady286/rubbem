@@ -4,20 +4,22 @@ use known_nodes::KnownNode;
 use std::io::Read;
 use message::{Message,ParseError};
 
+const MAX_NODES_COUNT: usize = 1000;
+
 pub struct AddrMessage {
     addr_list: Vec<KnownNode>
 }
 
 impl AddrMessage {
     pub fn new(addr_list: Vec<KnownNode>) -> AddrMessage {
-        assert!(addr_list.len() <= 1000);
+        assert!(addr_list.len() <= MAX_NODES_COUNT);
         AddrMessage {
             addr_list: addr_list
         }
     }
 
-    pub fn read(source: &mut Read) -> Result<Box<Message>,ParseError> {
-        let count = try!(super::read_var_int_usize(source, 1000));
+    pub fn read(source: &mut Read) -> Result<Box<AddrMessage>,ParseError> {
+        let count = try!(super::read_var_int_usize(source, MAX_NODES_COUNT));
 
         let mut known_nodes: Vec<KnownNode> = Vec::with_capacity(count);
         for _ in 0..count {
@@ -31,8 +33,11 @@ impl AddrMessage {
             }
         }
 
-
         Ok(Box::new(AddrMessage::new(known_nodes)))
+    }
+
+    pub fn addr_list(&self) -> &Vec<KnownNode> {
+        &self.addr_list
     }
 }
 
@@ -60,6 +65,7 @@ mod tests {
 	use known_nodes::KnownNode;
     use message::Message;
     use message::addr::AddrMessage;
+    use std::io::{Cursor,Read};
 	use time::Timespec;
 
     #[test]
@@ -70,7 +76,6 @@ mod tests {
         let payload = message.payload();
 
         assert_eq!("addr".to_string(), message.command());
-        assert_eq!(77, payload.len());
 
         let expected = vec![
             2,
@@ -87,5 +92,11 @@ mod tests {
         ];
         assert_eq!(expected, payload);
 
+        let mut source_box: Box<Read> = Box::new(Cursor::new(payload));
+        let source = &mut *source_box;
+        let roundtrip = AddrMessage::read(source).unwrap();
+
+        assert_eq!("addr".to_string(), roundtrip.command());
+        assert_eq!(&vec![node1, node2], roundtrip.addr_list());
     }
 }

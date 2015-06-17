@@ -33,7 +33,7 @@ impl VersionMessage {
         }
     }
 
-    pub fn read(source: &mut Read) -> Result<Box<Message>,ParseError> {
+    pub fn read(source: &mut Read) -> Result<Box<VersionMessage>,ParseError> {
         let version = try!(super::read_u32(source));
         let services = try!(super::read_u64(source));
         let timestamp = try!(super::read_timestamp(source));
@@ -46,6 +46,38 @@ impl VersionMessage {
         let stream_numbers = try!(super::read_var_int_list(source, 160000));
 
         Ok(Box::new(VersionMessage::new(version, services, timestamp, addr_recv, addr_from, nonce, user_agent, stream_numbers)))
+    }
+
+    pub fn version(&self) -> u32 {
+        self.version
+    }
+
+    pub fn services(&self) -> u64 {
+        self.services
+    }
+
+    pub fn timestamp(&self) -> Timespec {
+        self.timestamp
+    }
+
+    pub fn addr_recv(&self) -> SocketAddr {
+        self.addr_recv
+    }
+
+    pub fn addr_from(&self) -> SocketAddr {
+        self.addr_from
+    }
+
+    pub fn nonce(&self) -> u64 {
+        self.nonce
+    }
+
+    pub fn user_agent(&self) -> &str {
+        &self.user_agent
+    }
+
+    pub fn stream_numbers(&self) -> &Vec<u64> {
+        &self.stream_numbers
     }
 }
 
@@ -76,6 +108,7 @@ mod tests {
     use message::Message;
     use message::version::VersionMessage;
     use std::net::ToSocketAddrs;
+    use std::io::{Cursor,Read};
     use time::Timespec;
 
     #[test]
@@ -86,7 +119,10 @@ mod tests {
         let user_agent = "Rubbem".to_string();
         let stream_numbers = vec![ 1u64 ];
         let message = VersionMessage::new(3, 1, timestamp, socket_addr1, socket_addr2, 0x12345678, user_agent, stream_numbers);
+
+        assert_eq!("version".to_string(), message.command());
         let payload = message.payload();
+
 
         let expected = vec![ 0, 0, 0, 3, // version
                              0, 0, 0, 0, 0, 0, 0, 1, // services
@@ -103,5 +139,19 @@ mod tests {
                         ];
 
         assert_eq!(expected, payload);
+
+        let mut source_box: Box<Read> = Box::new(Cursor::new(payload));
+        let source = &mut *source_box;
+        let roundtrip = VersionMessage::read(source).unwrap();
+
+        assert_eq!("version".to_string(), roundtrip.command());
+        assert_eq!(3, roundtrip.version());
+        assert_eq!(1, roundtrip.services());
+        assert_eq!(timestamp, roundtrip.timestamp());
+        assert_eq!(socket_addr1, roundtrip.addr_recv());
+        assert_eq!(socket_addr2, roundtrip.addr_from());
+        assert_eq!(0x12345678, roundtrip.nonce());
+        assert_eq!("Rubbem", roundtrip.user_agent());
+        assert_eq!(&vec![ 1 ], roundtrip.stream_numbers());
     }
 }

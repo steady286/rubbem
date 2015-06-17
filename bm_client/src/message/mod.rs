@@ -1,10 +1,12 @@
+mod addr;
 mod verack;
 mod version;
-mod addr;
+mod inv;
 
-pub use self::version::VersionMessage;
-pub use self::verack::VerackMessage;
 pub use self::addr::AddrMessage;
+pub use self::inv::InvMessage;
+pub use self::verack::VerackMessage;
+pub use self::version::VersionMessage;
 
 use byteorder::BigEndian;
 use byteorder::{ReadBytesExt,WriteBytesExt};
@@ -150,9 +152,10 @@ fn read_payload(command: String, message_bytes: Vec<u8>) -> Result<Box<Message>,
 	let source = &mut *source_box;
 
 	let message = match &command[..] {
-		"version" => try!(VersionMessage::read(source)),
-		"verack" => try!(VerackMessage::read(source)),
-		"addr" => try!(AddrMessage::read(source)),
+		"version" => try!(VersionMessage::read(source)) as Box<Message>,
+		"verack" => try!(VerackMessage::read(source)) as Box<Message>,
+		"addr" => try!(AddrMessage::read(source)) as Box<Message>,
+        "inv" => try!(InvMessage::read(source)) as Box<Message>,
 		_ => return Err(ParseError::UnknownCommand)
 	};
 

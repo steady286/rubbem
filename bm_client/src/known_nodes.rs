@@ -44,7 +44,7 @@ impl KnownNodes {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone,Copy,Debug,PartialEq)]
 pub struct KnownNode {
     last_seen: Timespec,
     stream: u32,

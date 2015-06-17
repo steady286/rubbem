@@ -8,7 +8,7 @@ impl VerackMessage {
 		VerackMessage
 	}
 
-	pub fn read(_: &mut Read) -> Result<Box<Message>,ParseError> {
+	pub fn read(_: &mut Read) -> Result<Box<VerackMessage>,ParseError> {
 			Ok(Box::new(VerackMessage::new()))
 	}
 }
@@ -27,6 +27,7 @@ impl Message for VerackMessage {
 mod tests {
     use message::Message;
     use message::verack::VerackMessage;
+	use std::io::{Cursor,Read};
 
     #[test]
     fn test_verack_message_payload() {
@@ -35,5 +36,11 @@ mod tests {
 
         assert_eq!("verack".to_string(), message.command());
         assert_eq!(0, payload.len());
+
+		let mut source_box: Box<Read> = Box::new(Cursor::new(payload));
+		let source = &mut *source_box;
+		let roundtrip = VerackMessage::read(source).unwrap();
+
+		assert_eq!("verack".to_string(), roundtrip.command());
     }
 }
