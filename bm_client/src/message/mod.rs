@@ -1,10 +1,14 @@
 mod addr;
+mod getdata;
 mod verack;
 mod version;
 mod inv;
+mod inv_vect;
 
 pub use self::addr::AddrMessage;
+pub use self::getdata::GetdataMessage;
 pub use self::inv::InvMessage;
+pub use self::inv_vect::InventoryVector;
 pub use self::verack::VerackMessage;
 pub use self::version::VersionMessage;
 
@@ -156,6 +160,7 @@ fn read_payload(command: String, message_bytes: Vec<u8>) -> Result<Box<Message>,
 		"verack" => try!(VerackMessage::read(source)) as Box<Message>,
 		"addr" => try!(AddrMessage::read(source)) as Box<Message>,
         "inv" => try!(InvMessage::read(source)) as Box<Message>,
+        "getdata" => try!(GetdataMessage::read(source)) as Box<Message>,
 		_ => return Err(ParseError::UnknownCommand)
 	};
 

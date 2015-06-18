@@ -1,22 +1,22 @@
 use std::io::Read;
 use message::{InventoryVector,Message,ParseError};
 
-const MAX_INV_COUNT: usize = 50000;
+const MAX_GETDATA_COUNT: usize = 50000;
 
-pub struct InvMessage {
+pub struct GetdataMessage {
 	inventory: Vec<InventoryVector>
 }
 
-impl InvMessage {
-    pub fn new(inventory: Vec<InventoryVector>) -> InvMessage {
-        assert!(inventory.len() <= MAX_INV_COUNT);
-		InvMessage {
+impl GetdataMessage {
+    pub fn new(inventory: Vec<InventoryVector>) -> GetdataMessage {
+        assert!(inventory.len() <= MAX_GETDATA_COUNT);
+		GetdataMessage {
 			inventory: inventory
         }
     }
 
-    pub fn read(source: &mut Read) -> Result<Box<InvMessage>,ParseError> {
-        let count = try!(super::read_var_int_usize(source, MAX_INV_COUNT));
+    pub fn read(source: &mut Read) -> Result<Box<GetdataMessage>,ParseError> {
+        let count = try!(super::read_var_int_usize(source, MAX_GETDATA_COUNT));
 
         let mut inventory: Vec<InventoryVector> = Vec::with_capacity(count);
         for _ in 0..count {
@@ -29,7 +29,7 @@ impl InvMessage {
 			inventory.push(inv_vect);
         }
 
-        Ok(Box::new(InvMessage::new(inventory)))
+        Ok(Box::new(GetdataMessage::new(inventory)))
     }
 
 	pub fn inventory(&self) -> &Vec<InventoryVector> {
@@ -37,9 +37,9 @@ impl InvMessage {
 	}
 }
 
-impl Message for InvMessage {
+impl Message for GetdataMessage {
     fn command(&self) -> String {
-        "inv".to_string()
+        "getdata".to_string()
     }
 
     fn payload(&self) -> Vec<u8> {
@@ -56,13 +56,13 @@ impl Message for InvMessage {
 
 #[cfg(test)]
 mod tests {
-	use message::{InventoryVector,Message};
-    use message::inv::InvMessage;
+    use message::{InventoryVector,Message};
+    use message::getdata::GetdataMessage;
 	use rand::{Rng,SeedableRng,XorShiftRng};
 	use std::io::{Cursor,Read};
 
     #[test]
-    fn test_inv_message_payload() {
+    fn test_getdata_message_payload() {
 		let mut rng: XorShiftRng = SeedableRng::from_seed([0, 0, 0, 1]);
 		let hash1: Vec<u8> = rng.gen_iter::<u8>().take(32).collect();
 		let hash2: Vec<u8> = rng.gen_iter::<u8>().take(32).collect();
@@ -70,10 +70,10 @@ mod tests {
 		let inv_vect2 = InventoryVector::new(&hash2);
 
 		let inventory: Vec<InventoryVector> = vec![ inv_vect1, inv_vect2 ];
-		let message = InvMessage::new(inventory);
+		let message = GetdataMessage::new(inventory);
         let payload = message.payload();
 
-        assert_eq!("inv".to_string(), message.command());
+        assert_eq!("getdata".to_string(), message.command());
 
         let mut expected = vec![ 2 ];
 		expected.extend(hash1);
@@ -83,9 +83,9 @@ mod tests {
 
         let mut source_box: Box<Read> = Box::new(Cursor::new(payload));
         let source = &mut *source_box;
-        let roundtrip = InvMessage::read(source).unwrap();
+        let roundtrip = GetdataMessage::read(source).unwrap();
 
-        assert_eq!("inv".to_string(), roundtrip.command());
+        assert_eq!("getdata".to_string(), roundtrip.command());
         assert_eq!(&vec![inv_vect1, inv_vect2], roundtrip.inventory());
     }
 }
