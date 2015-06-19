@@ -1,9 +1,10 @@
 mod addr;
 mod getdata;
-mod verack;
-mod version;
 mod inv;
 mod inv_vect;
+mod object;
+mod verack;
+mod version;
 
 pub use self::addr::AddrMessage;
 pub use self::getdata::GetdataMessage;
@@ -36,7 +37,7 @@ pub trait Message
 
         let payload = self.payload();
         let payload_length = payload.len();
-        let checksum = sha512_checksum(&payload);
+        let checksum = sha512_checksum(&payload[..]);
 
         let mut packet: Vec<u8> = vec![];
         packet.write_u32::<BigEndian>(MAGIC).unwrap();
@@ -77,7 +78,8 @@ pub enum ParseError {
     BadAscii,
 	PayloadTooBig,
     MaxExceeded,
-    UnexpectedEof
+    UnexpectedEof,
+    UnknownObjectType
 }
 
 pub trait MessageListener : Send {
@@ -124,7 +126,7 @@ fn read_message(source: &mut Read) -> Result<Box<Message>,ParseError> {
     }
 
     let payload = try!(read_bytes(source, length_bytes as usize));
-    let calculated_checksum = sha512_checksum(&payload);
+    let calculated_checksum = sha512_checksum(&payload[..]);
     if calculated_checksum != expected_checksum {
         return Err(ParseError::ChecksumMismatch);
     }

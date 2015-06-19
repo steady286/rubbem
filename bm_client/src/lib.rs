@@ -10,6 +10,7 @@ mod known_nodes;
 mod message;
 mod peer;
 mod persist;
+mod pow;
 
 use config::Config;
 use known_nodes::KnownNodes;

@@ -1,38 +1,31 @@
+pub use sodiumoxide::crypto::hash::sha512::hash as sha512;
+pub use sodiumoxide::crypto::hash::sha512::Digest as Sha512Digest;
+
 use byteorder::{BigEndian,ReadBytesExt};
-use sodiumoxide::crypto::hash::sha512::hash;
 use std::io::Cursor;
 
-pub fn sha512(input: &Vec<u8>) -> Vec<u8> {
-    let digest = hash(&input[..]);
+pub fn sha512_checksum(input: &[u8]) -> u32 {
+    let Sha512Digest(digest) = sha512(input);
 
-    let mut result = vec![];
-    for &b in &digest[..] {
-        result.push(b);
-    }
+    assert!(digest.len() >= 4);
 
-    result
-}
-
-pub fn sha512_checksum(input: &Vec<u8>) -> u32 {
-    let sha512 = sha512(input);
-
-    assert!(sha512.len() >= 4);
-
-    let mut cursor = Cursor::new(sha512);
+    let mut cursor = Cursor::new(&digest[0..4]);
     cursor.read_u32::<BigEndian>().unwrap()
 }
 
 #[cfg(test)]
 mod tests {
+    use super::Sha512Digest;
     use super::sha512;
+    use super::sha512_checksum;
 
     #[test]
     fn test_sha512() {
-        let input: Vec<u8> = vec![ 104, 101, 108, 108, 111 ]; // hello]
-        let output1 = sha512(&input);
-        let output2 = sha512(&output1);
+        let input: Vec<u8> = vec![ 104, 101, 108, 108, 111 ]; // hello
+        let Sha512Digest(output1) = sha512(&input[..]);
+        let Sha512Digest(output2) = sha512(&output1[..]);
 
-        let expected1 = vec![
+        let expected1 = [
                         0x9b, 0x71, 0xd2, 0x24, 0xbd, 0x62, 0xf3, 0x78,
                         0x5d, 0x96, 0xd4, 0x6a, 0xd3, 0xea, 0x3d, 0x73,
                         0x31, 0x9b, 0xfb, 0xc2, 0x89, 0x0c, 0xaa, 0xda,
@@ -42,9 +35,9 @@ mod tests {
                         0x0c, 0x46, 0x63, 0x47, 0x5c, 0x2e, 0x5c, 0x3a,
                         0xde, 0xf4, 0x6f, 0x73, 0xbc, 0xde, 0xc0, 0x43 ];
 
-        assert_eq!(expected1, output1);
+        assert_eq!(&expected1[..], &output1[..]);
 
-        let expected2 = vec![
+        let expected2 = [
                         0x05, 0x92, 0xa1, 0x05, 0x84, 0xff, 0xab, 0xf9,
                         0x65, 0x39, 0xf3, 0xd7, 0x80, 0xd7, 0x76, 0x82,
                         0x8c, 0x67, 0xda, 0x1a, 0xb5, 0xb1, 0x69, 0xe9,
@@ -54,6 +47,13 @@ mod tests {
                         0x35, 0x88, 0xbe, 0x88, 0x89, 0x4f, 0xef, 0x4d,
                         0xcf, 0xfd, 0xb7, 0x4b, 0x98, 0xe2, 0xb2, 0x00 ];
 
-        assert_eq!(expected2, output2);
+        assert_eq!(&expected2[..], &output2[..]);
+    }
+
+    #[test]
+    fn test_sha512_checksum() {
+        let bytes = vec![];
+        let checksum = sha512_checksum(&bytes[..]);
+        assert_eq!(3481526581, checksum);
     }
 }
