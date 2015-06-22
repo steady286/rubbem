@@ -4,13 +4,13 @@ extern crate rand;
 extern crate sodiumoxide;
 extern crate time;
 
+mod bm_time;
 mod config;
 mod crypto;
 mod known_nodes;
 mod message;
 mod peer;
 mod persist;
-mod pow;
 
 use config::Config;
 use known_nodes::KnownNodes;

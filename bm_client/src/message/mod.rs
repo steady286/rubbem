@@ -3,6 +3,7 @@ mod getdata;
 mod inv;
 mod inv_vect;
 mod object;
+mod pow;
 mod verack;
 mod version;
 
@@ -10,6 +11,7 @@ pub use self::addr::AddrMessage;
 pub use self::getdata::GetdataMessage;
 pub use self::inv::InvMessage;
 pub use self::inv_vect::InventoryVector;
+pub use self::object::ObjectMessage;
 pub use self::verack::VerackMessage;
 pub use self::version::VersionMessage;
 
@@ -21,6 +23,14 @@ use encoding::all::ASCII;
 use std::io::{Cursor,Read};
 use std::net::{Ipv6Addr,SocketAddr,SocketAddrV4,SocketAddrV6};
 use time::Timespec;
+
+const MAX_PAYLOAD_LENGTH: u32 = 1600003;
+const MAX_NODES_COUNT: usize = 1000;
+const MAX_GETDATA_COUNT: usize = 50000;
+const MAX_INV_COUNT: usize = 50000;
+const MAX_PAYLOAD_LENGTH_FOR_OBJECT: u32 = 262144; // 2^18 - maximum object length
+const MAX_TTL: u32 = 2430000; // 28 days and 3 hours
+const OBJECT_EXPIRY_CUTOFF: i64 = -3600;
 
 //
 // Message
@@ -79,7 +89,10 @@ pub enum ParseError {
 	PayloadTooBig,
     MaxExceeded,
     UnexpectedEof,
-    UnknownObjectType
+    UnknownObjectType,
+    ObjectExpired,
+    ObjectLivesTooLong,
+    UnacceptablePow
 }
 
 pub trait MessageListener : Send {
@@ -121,7 +134,7 @@ fn read_message(source: &mut Read) -> Result<Box<Message>,ParseError> {
     let length_bytes = try!(read_u32(source));
     let expected_checksum = try!(read_u32(source));
 
-    if length_bytes > 1600003 {
+    if length_bytes > MAX_PAYLOAD_LENGTH {
         return Err(ParseError::PayloadLength);
     }
 
@@ -153,8 +166,9 @@ fn remove_zeros(bytes: &[u8]) -> Result<&[u8],ParseError> {
 	}
 }
 
-fn read_payload(command: String, message_bytes: Vec<u8>) -> Result<Box<Message>,ParseError> {
-	let mut source_box: Box<Read> = Box::new(Cursor::new(message_bytes));
+fn read_payload(command: String, payload_bytes: Vec<u8>) -> Result<Box<Message>,ParseError> {
+    let payload_length = payload_bytes.len() as u32;
+	let mut source_box: Box<Read> = Box::new(Cursor::new(payload_bytes));
 	let source = &mut *source_box;
 
 	let message = match &command[..] {
@@ -163,6 +177,7 @@ fn read_payload(command: String, message_bytes: Vec<u8>) -> Result<Box<Message>,
 		"addr" => try!(AddrMessage::read(source)) as Box<Message>,
         "inv" => try!(InvMessage::read(source)) as Box<Message>,
         "getdata" => try!(GetdataMessage::read(source)) as Box<Message>,
+        "object" => try!(ObjectMessage::read(payload_length, source)) as Box<Message>,
 		_ => return Err(ParseError::UnknownCommand)
 	};
 

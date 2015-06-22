@@ -2,9 +2,7 @@ use byteorder::BigEndian;
 use byteorder::WriteBytesExt;
 use known_nodes::KnownNode;
 use std::io::Read;
-use message::{Message,ParseError};
-
-const MAX_NODES_COUNT: usize = 1000;
+use message::{Message,ParseError,MAX_NODES_COUNT};
 
 pub struct AddrMessage {
     addr_list: Vec<KnownNode>

@@ -1,7 +1,5 @@
 use std::io::Read;
-use message::{InventoryVector,Message,ParseError};
-
-const MAX_INV_COUNT: usize = 50000;
+use message::{InventoryVector,Message,ParseError,MAX_INV_COUNT};
 
 pub struct InvMessage {
 	inventory: Vec<InventoryVector>
