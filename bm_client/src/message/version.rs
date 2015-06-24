@@ -1,9 +1,10 @@
 use byteorder::BigEndian;
 use byteorder::WriteBytesExt;
 use message::{Message,ParseError};
-use std::io::Read;
+use std::io::Cursor;
 use std::net::SocketAddr;
 use time::Timespec;
+use super::check_no_more_data;
 
 pub struct VersionMessage {
     version: u32, // protocol version
@@ -33,17 +34,21 @@ impl VersionMessage {
         }
     }
 
-    pub fn read(source: &mut Read) -> Result<Box<VersionMessage>,ParseError> {
-        let version = try!(super::read_u32(source));
-        let services = try!(super::read_u64(source));
-        let timestamp = try!(super::read_timestamp(source));
-        try!(super::read_u64(source)); // recv_services
-        let addr_recv = try!(super::read_address_and_port(source));
-        try!(super::read_u64(source)); // from_services
-        let addr_from = try!(super::read_address_and_port(source));
-        let nonce = try!(super::read_u64(source));
-        let user_agent = try!(super::read_var_str(source, 5000));
-        let stream_numbers = try!(super::read_var_int_list(source, 160000));
+    pub fn read(payload: Vec<u8>) -> Result<Box<VersionMessage>,ParseError> {
+        let mut cursor = Cursor::new(payload);
+
+        let version = try!(super::read_u32(&mut cursor));
+        let services = try!(super::read_u64(&mut cursor));
+        let timestamp = try!(super::read_timestamp(&mut cursor));
+        try!(super::read_u64(&mut cursor)); // recv_services
+        let addr_recv = try!(super::read_address_and_port(&mut cursor));
+        try!(super::read_u64(&mut cursor)); // from_services
+        let addr_from = try!(super::read_address_and_port(&mut cursor));
+        let nonce = try!(super::read_u64(&mut cursor));
+        let user_agent = try!(super::read_var_str(&mut cursor, 5000));
+        let stream_numbers = try!(super::read_var_int_list(&mut cursor, 160000));
+
+        try!(check_no_more_data(&mut cursor));
 
         Ok(Box::new(VersionMessage::new(version, services, timestamp, addr_recv, addr_from, nonce, user_agent, stream_numbers)))
     }
@@ -96,8 +101,8 @@ impl Message for VersionMessage {
         payload.write_u64::<BigEndian>(self.services).unwrap();
         super::write_address_and_port(&mut payload, &self.addr_from);
         payload.write_u64::<BigEndian>(self.nonce).unwrap();
-		super::write_var_str(&mut payload, &self.user_agent);
-		super::write_var_int_list(&mut payload, &self.stream_numbers);
+        super::write_var_str(&mut payload, &self.user_agent);
+        super::write_var_int_list(&mut payload, &self.stream_numbers);
 
         payload
     }
@@ -108,7 +113,7 @@ mod tests {
     use message::Message;
     use message::version::VersionMessage;
     use std::net::ToSocketAddrs;
-    use std::io::{Cursor,Read};
+    use std::io::Read;
     use time::Timespec;
 
     #[test]
@@ -140,9 +145,7 @@ mod tests {
 
         assert_eq!(expected, payload);
 
-        let mut source_box: Box<Read> = Box::new(Cursor::new(payload));
-        let source = &mut *source_box;
-        let roundtrip = VersionMessage::read(source).unwrap();
+        let roundtrip = VersionMessage::read(payload).unwrap();
 
         assert_eq!("version".to_string(), roundtrip.command());
         assert_eq!(3, roundtrip.version());

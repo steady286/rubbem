@@ -1,8 +1,9 @@
 use byteorder::BigEndian;
 use byteorder::WriteBytesExt;
 use known_nodes::KnownNode;
-use std::io::Read;
+use std::io::Cursor;
 use message::{Message,ParseError,MAX_NODES_COUNT};
+use super::check_no_more_data;
 
 pub struct AddrMessage {
     addr_list: Vec<KnownNode>
@@ -16,20 +17,24 @@ impl AddrMessage {
         }
     }
 
-    pub fn read(source: &mut Read) -> Result<Box<AddrMessage>,ParseError> {
-        let count = try!(super::read_var_int_usize(source, MAX_NODES_COUNT));
+    pub fn read(payload: Vec<u8>) -> Result<Box<AddrMessage>,ParseError> {
+        let mut cursor = Cursor::new(payload);
+
+        let count = try!(super::read_var_int_usize(&mut cursor, MAX_NODES_COUNT));
 
         let mut known_nodes: Vec<KnownNode> = Vec::with_capacity(count);
         for _ in 0..count {
-            let timestamp = try!(super::read_timestamp(source));
-            let stream = try!(super::read_u32(source));
-            let services = try!(super::read_u64(source));
-            let addr = try!(super::read_address_and_port(source));
+            let timestamp = try!(super::read_timestamp(&mut cursor));
+            let stream = try!(super::read_u32(&mut cursor));
+            let services = try!(super::read_u64(&mut cursor));
+            let addr = try!(super::read_address_and_port(&mut cursor));
 
             if let Ok(known_node) = KnownNode::new(timestamp, stream, services, addr) {
                 known_nodes.push(known_node);
             }
         }
+
+        try!(check_no_more_data(&mut cursor));
 
         Ok(Box::new(AddrMessage::new(known_nodes)))
     }
@@ -60,11 +65,11 @@ impl Message for AddrMessage {
 
 #[cfg(test)]
 mod tests {
-	use known_nodes::KnownNode;
+    use known_nodes::KnownNode;
     use message::Message;
     use message::addr::AddrMessage;
     use std::io::{Cursor,Read};
-	use time::Timespec;
+    use time::Timespec;
 
     #[test]
     fn test_addr_message_payload() {
@@ -90,9 +95,7 @@ mod tests {
         ];
         assert_eq!(expected, payload);
 
-        let mut source_box: Box<Read> = Box::new(Cursor::new(payload));
-        let source = &mut *source_box;
-        let roundtrip = AddrMessage::read(source).unwrap();
+        let roundtrip = AddrMessage::read(payload).unwrap();
 
         assert_eq!("addr".to_string(), roundtrip.command());
         assert_eq!(&vec![node1, node2], roundtrip.addr_list());

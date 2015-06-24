@@ -20,7 +20,7 @@ use byteorder::{ReadBytesExt,WriteBytesExt};
 use crypto::sha512_checksum;
 use encoding::{DecoderTrap,Encoding,EncoderTrap};
 use encoding::all::ASCII;
-use std::io::{Cursor,Read};
+use std::io::Read;
 use std::net::{Ipv6Addr,SocketAddr,SocketAddrV4,SocketAddrV6};
 use time::Timespec;
 
@@ -38,8 +38,7 @@ const OBJECT_EXPIRY_CUTOFF: i64 = -3600;
 
 static MAGIC: u32 = 0xe9beb4d9;
 
-pub trait Message
-{
+pub trait Message {
     fn packet(&self) -> Vec<u8> {
         let command = self.command();
         let mut ascii_command = ASCII.encode(&command, EncoderTrap::Ignore).unwrap();
@@ -79,17 +78,18 @@ fn pad(data: &mut Vec<u8>, size: usize, padding: u8) {
 
 #[derive(Debug,PartialEq)]
 pub enum ParseError {
-	FailedMagic,
-	PayloadLength,
-	ChecksumMismatch,
-	AsciiDecode,
-	NonZeroPadding,
-	UnknownCommand,
+    FailedMagic,
+    PayloadLength,
+    ChecksumMismatch,
+    AsciiDecode,
+    NonZeroPadding,
+    UnknownCommand,
     BadAscii,
-	PayloadTooBig,
+    PayloadTooBig,
     MaxExceeded,
     UnexpectedEof,
     UnknownObjectType,
+    UnknownObjectVersion,
     ObjectExpired,
     ObjectLivesTooLong,
     UnacceptablePow
@@ -100,28 +100,28 @@ pub trait MessageListener : Send {
 }
 
 pub struct MessageReader {
-	source: Box<Read>,
-	listener: Box<MessageListener>
+    source: Box<Read>,
+    listener: Box<MessageListener>
 }
 
 impl MessageReader {
-	pub fn new(source: Box<Read>, listener: Box<MessageListener>) -> MessageReader {
-		MessageReader {
-			source: source,
-			listener: listener
-		}
-	}
+    pub fn new(source: Box<Read>, listener: Box<MessageListener>) -> MessageReader {
+        MessageReader {
+            source: source,
+            listener: listener
+        }
+    }
 
-	pub fn start(&mut self) {
+    pub fn start(&mut self) {
         let source = &mut *self.source;
 
-		loop {
+        loop {
             match read_message(source) {
                 Ok(m) => self.listener.message(m),
                 Err(_) => break
             }
-		}
-	}
+        }
+    }
 }
 
 fn read_message(source: &mut Read) -> Result<Box<Message>,ParseError> {
@@ -150,44 +150,44 @@ fn read_message(source: &mut Read) -> Result<Box<Message>,ParseError> {
 fn read_command(source: &mut Read) -> Result<String,ParseError> {
     let command_bytes = try!(read_bytes(source, 12));
 
-	assert!(command_bytes.len() == 12);
+    assert!(command_bytes.len() == 12);
 
-	let non_zero_bytes = try!(remove_zeros(&command_bytes[..]));
-	ASCII.decode(non_zero_bytes, DecoderTrap::Strict).map_err(|_| ParseError::AsciiDecode)
+    let non_zero_bytes = try!(remove_zeros(&command_bytes[..]));
+    ASCII.decode(non_zero_bytes, DecoderTrap::Strict).map_err(|_| ParseError::AsciiDecode)
 }
 
 fn remove_zeros(bytes: &[u8]) -> Result<&[u8],ParseError> {
-	let mut split: Vec<&[u8]> = bytes.split(|&byte| byte == 0).collect();
-	split.retain(|split| split.len() > 0);
+    let mut split: Vec<&[u8]> = bytes.split(|&byte| byte == 0).collect();
+    split.retain(|split| split.len() > 0);
 
-	match split.len() {
-		1 => Ok(split[0]),
-		_ => Err(ParseError::NonZeroPadding)
-	}
+    match split.len() {
+        1 => Ok(split[0]),
+        _ => Err(ParseError::NonZeroPadding)
+    }
 }
 
-fn read_payload(command: String, payload_bytes: Vec<u8>) -> Result<Box<Message>,ParseError> {
-    let payload_length = payload_bytes.len() as u32;
-	let mut source_box: Box<Read> = Box::new(Cursor::new(payload_bytes));
-	let source = &mut *source_box;
+fn read_payload(command: String, payload: Vec<u8>) -> Result<Box<Message>,ParseError> {
+    let message = match &command[..] {
+        "version" => try!(VersionMessage::read(payload)) as Box<Message>,
+        "verack" => try!(VerackMessage::read(payload)) as Box<Message>,
+        "addr" => try!(AddrMessage::read(payload)) as Box<Message>,
+        "inv" => try!(InvMessage::read(payload)) as Box<Message>,
+        "getdata" => try!(GetdataMessage::read(payload)) as Box<Message>,
+        "object" => try!(ObjectMessage::read(payload)) as Box<Message>,
+        _ => return Err(ParseError::UnknownCommand)
+    };
 
-	let message = match &command[..] {
-		"version" => try!(VersionMessage::read(source)) as Box<Message>,
-		"verack" => try!(VerackMessage::read(source)) as Box<Message>,
-		"addr" => try!(AddrMessage::read(source)) as Box<Message>,
-        "inv" => try!(InvMessage::read(source)) as Box<Message>,
-        "getdata" => try!(GetdataMessage::read(source)) as Box<Message>,
-        "object" => try!(ObjectMessage::read(payload_length, source)) as Box<Message>,
-		_ => return Err(ParseError::UnknownCommand)
-	};
+    Ok(message)
+}
 
-	let mut remaining: Vec<u8> = vec![];
-	let remaining_count = source.read_to_end(&mut remaining).unwrap();
-	if remaining_count > 0 {
-		return Err(ParseError::PayloadTooBig);
-	}
+fn check_no_more_data(source: &mut Read) -> Result<(),ParseError> {
+    let mut remaining: Vec<u8> = vec![];
+    let remaining_count = source.read_to_end(&mut remaining).unwrap();
+    if remaining_count > 0 {
+        return Err(ParseError::PayloadTooBig);
+    }
 
-	Ok(message)
+    Ok(())
 }
 
 //
@@ -198,70 +198,70 @@ const NO_FLOW: u32 = 0;
 const GLOBAL_SCOPE: u32 = 0xe;
 
 fn read_address_and_port(source: &mut Read) -> Result<SocketAddr,ParseError> {
-	let a = try!(read_u16(source));
-	let b = try!(read_u16(source));
-	let c = try!(read_u16(source));
-	let d = try!(read_u16(source));
-	let e = try!(read_u16(source));
-	let f = try!(read_u16(source));
-	let g = try!(read_u16(source));
-	let h = try!(read_u16(source));
-	let port = try!(read_u16(source));
+    let a = try!(read_u16(source));
+    let b = try!(read_u16(source));
+    let c = try!(read_u16(source));
+    let d = try!(read_u16(source));
+    let e = try!(read_u16(source));
+    let f = try!(read_u16(source));
+    let g = try!(read_u16(source));
+    let h = try!(read_u16(source));
+    let port = try!(read_u16(source));
 
-	let v6_ip = Ipv6Addr::new(a, b, c, d, e, f, g, h);
+    let v6_ip = Ipv6Addr::new(a, b, c, d, e, f, g, h);
 
-	let socket_addr = match v6_ip.to_ipv4() {
-		None => SocketAddr::V6(SocketAddrV6::new(v6_ip, port, NO_FLOW, GLOBAL_SCOPE)),
-		Some(v4_ip) => SocketAddr::V4(SocketAddrV4::new(v4_ip, port))
-	};
+    let socket_addr = match v6_ip.to_ipv4() {
+        None => SocketAddr::V6(SocketAddrV6::new(v6_ip, port, NO_FLOW, GLOBAL_SCOPE)),
+        Some(v4_ip) => SocketAddr::V4(SocketAddrV4::new(v4_ip, port))
+    };
 
-	Ok(socket_addr)
+    Ok(socket_addr)
 }
 
 fn read_timestamp(source: &mut Read) -> Result<Timespec,ParseError> {
-	let secs = try!(read_i64(source));
-	Ok(Timespec::new(secs, 0))
+    let secs = try!(read_i64(source));
+    Ok(Timespec::new(secs, 0))
 }
 
 fn read_var_str(source: &mut Read, max_length: usize) -> Result<String,ParseError> {
-	let length = try!(read_var_int_usize(source, max_length));
+    let length = try!(read_var_int_usize(source, max_length));
 
-	let string_bytes = try!(read_bytes(source, length));
-	ASCII.decode(&string_bytes, DecoderTrap::Strict).map_err(|_| ParseError::BadAscii)
+    let string_bytes = try!(read_bytes(source, length));
+    ASCII.decode(&string_bytes, DecoderTrap::Strict).map_err(|_| ParseError::BadAscii)
 }
 
 fn read_var_int_list(source: &mut Read, max_count: usize) -> Result<Vec<u64>,ParseError> {
-	let count = try!(read_var_int_usize(source, max_count));
+    let count = try!(read_var_int_usize(source, max_count));
 
-	let mut int_list: Vec<u64> = Vec::with_capacity(count);
-	for _ in 0..count {
-		let int = try!(read_var_int(source, u64::max_value()));
-		int_list.push(int);
-	}
+    let mut int_list: Vec<u64> = Vec::with_capacity(count);
+    for _ in 0..count {
+        let int = try!(read_var_int(source, u64::max_value()));
+        int_list.push(int);
+    }
 
-	Ok(int_list)
+    Ok(int_list)
 }
 
 fn read_var_int_usize(source: &mut Read, max_value: usize) -> Result<usize,ParseError> {
-	read_var_int(source, max_value as u64).map(|v| v as usize)
+    read_var_int(source, max_value as u64).map(|v| v as usize)
 }
 
 fn read_var_int(source: &mut Read, max_value: u64) -> Result<u64,ParseError> {
-	let first_byte: u8 = try!(read_u8(source));
+    let first_byte: u8 = try!(read_u8(source));
 
-	let value = match first_byte {
-		byte @ 0...0xfc => byte as u64,
-		0xfd => try!(read_u16(source)) as u64,
-		0xfe => try!(read_u32(source)) as u64,
-		0xff => try!(read_u64(source)),
-		_ => unreachable!()
-	};
+    let value = match first_byte {
+        byte @ 0...0xfc => byte as u64,
+        0xfd => try!(read_u16(source)) as u64,
+        0xfe => try!(read_u32(source)) as u64,
+        0xff => try!(read_u64(source)),
+        _ => unreachable!()
+    };
 
-	if value > max_value {
-		return Err(ParseError::MaxExceeded);
-	}
+    if value > max_value {
+        return Err(ParseError::MaxExceeded);
+    }
 
-	Ok(value)
+    Ok(value)
 }
 
 fn read_bytes(source: &mut Read, count: usize) -> Result<Vec<u8>,ParseError> {
@@ -277,7 +277,7 @@ fn read_bytes(source: &mut Read, count: usize) -> Result<Vec<u8>,ParseError> {
 }
 
 fn read_u64(source: &mut Read) -> Result<u64,ParseError> {
-	source.read_u64::<BigEndian>().map_err(|_| ParseError::UnexpectedEof)
+    source.read_u64::<BigEndian>().map_err(|_| ParseError::UnexpectedEof)
 }
 
 fn read_i64(source: &mut Read) -> Result<i64,ParseError> {
@@ -285,15 +285,15 @@ fn read_i64(source: &mut Read) -> Result<i64,ParseError> {
 }
 
 fn read_u32(source: &mut Read) -> Result<u32,ParseError> {
-	source.read_u32::<BigEndian>().map_err(|_| ParseError::UnexpectedEof)
+    source.read_u32::<BigEndian>().map_err(|_| ParseError::UnexpectedEof)
 }
 
 fn read_u16(source: &mut Read) -> Result<u16,ParseError> {
-	source.read_u16::<BigEndian>().map_err(|_| ParseError::UnexpectedEof)
+    source.read_u16::<BigEndian>().map_err(|_| ParseError::UnexpectedEof)
 }
 
 fn read_u8(source: &mut Read) -> Result<u8,ParseError> {
-	source.read_u8().map_err(|_| ParseError::UnexpectedEof)
+    source.read_u8().map_err(|_| ParseError::UnexpectedEof)
 }
 
 
@@ -418,22 +418,22 @@ mod tests {
         assert_eq!(expected, packet);
     }
 
-	#[test]
-	fn test_read_verack() {
-		let bytes = vec![
-			0xe9, 0xbe, 0xb4, 0xd9, // magic
-			118, 101, 114, 97, 99, 107, // "verack"
-			0, 0, 0, 0, 0, 0, // command padding
-			0, 0, 0, 0, // payload length
-			0xcf, 0x83, 0xe1, 0x35 // checksum
-		];
+    #[test]
+    fn test_read_verack() {
+        let bytes = vec![
+            0xe9, 0xbe, 0xb4, 0xd9, // magic
+            118, 101, 114, 97, 99, 107, // "verack"
+            0, 0, 0, 0, 0, 0, // command padding
+            0, 0, 0, 0, // payload length
+            0xcf, 0x83, 0xe1, 0x35 // checksum
+        ];
         let mut source_box: Box<Read> = Box::new(Cursor::new(bytes));
         let source = &mut *source_box;
 
         let message = read_message(source).unwrap();
 
         assert_eq!("verack", message.command());
-	}
+    }
 
     #[test]
     fn test_read_address_and_port_for_v4() {
