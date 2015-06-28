@@ -9,11 +9,15 @@ mod config;
 mod crypto;
 mod known_nodes;
 mod message;
+mod net;
 mod peer;
 mod persist;
+mod timegen;
 
 use config::Config;
 use known_nodes::KnownNodes;
+use message::KnownNode;
+use net::to_socket_addr;
 use peer::PeerConnector;
 use persist::MemoryPersister;
 use persist::Persister;
@@ -21,6 +25,7 @@ use rand::OsRng;
 use rand::Rng;
 use std::rc::Rc;
 use std::sync::RwLock;
+use time::get_time;
 
 pub enum BMError {
     NoRng,
@@ -61,16 +66,21 @@ impl BMClient {
 
 fn bootstrap_known_nodes(known_nodes: Rc<Box<KnownNodes>>) {
     if known_nodes.len() == 0 {
-        for (stream, services, address) in bootstrap_nodes() {
-            known_nodes.add_known_node(stream, services, address).unwrap();
+        for known_node in bootstrap_nodes() {
+            known_nodes.add_known_node(&known_node);
         }
     }
 }
 
-fn bootstrap_nodes() -> Vec<(u32, u64, &'static str)> {
+fn bootstrap_nodes() -> Vec<KnownNode> {
     vec![
-        //(1, 1, "5.45.99.75:8444")
-        (1, 1, "127.0.0.1:8444")
+        // "5.45.99.75:8444"
+        KnownNode {
+            last_seen: get_time(),
+            stream: 1,
+            services: 1,
+            socket_addr: to_socket_addr("127.0.0.1:8444")
+        }
     ]
 }
 

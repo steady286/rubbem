@@ -1,6 +1,6 @@
 use config::Config;
 use known_nodes::KnownNodes;
-use message::{Message,MessageListener,MessageReader,VersionMessage};
+use message::{Message,MessageListener,MessageReader,write_message};
 use std::io::{Error,Write};
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpStream};
 use std::rc::Rc;
@@ -16,8 +16,8 @@ impl PrintListener {
 }
 
 impl MessageListener for PrintListener {
-    fn message(&self, message: Box<Message>) {
-       println!("Command received: {}", message.command());
+    fn message(&self, message: &Message) {
+       println!("Command received: {:?}", message);
     }
 }
 
@@ -42,22 +42,23 @@ impl Connection {
         })
     }
 
-    pub fn listen(&self, listener: Box<MessageListener>) -> Result<(), Error> {
+    pub fn listen<L: MessageListener + 'static>(&self, listener: L) -> Result<(), Error> {
         let tcp_stream = try!(self.tcp_stream.try_clone());
 
         let thread_name = format!("Connection {}", self.peer_addr);
         let builder = Builder::new().name(thread_name);
-        match builder.spawn(move || { read(tcp_stream, listener) }) {
+        match builder.spawn(move || { read(tcp_stream, listener); }) {
             Ok(_) => Ok(()),
             Err(e) => Err(e)
         }
     }
 
-    pub fn send<'a>(&mut self, message: Box<Message + 'a>) {
-        println!("Sending {}", message.command());
-        let packet = message.packet();
-        self.tcp_stream.write_all(&packet[..]).unwrap();
-        println!("Sent {}", message.command());
+    pub fn send(&mut self, message: Message) {
+        println!("Sending {:?}", message);
+        let mut packet = vec![];
+        write_message(&mut packet, &message);
+        self.tcp_stream.write_all(&packet).unwrap();
+        println!("Sent {:?}", message);
     }
 
     pub fn set_state(&mut self, state: ConnectionState) {
@@ -65,9 +66,9 @@ impl Connection {
     }
 }
 
-fn read(tcp_stream: TcpStream, listener: Box<MessageListener>) {
-    let mut message_byte_reader = MessageReader::new(Box::new(tcp_stream), listener);
-    message_byte_reader.start();
+fn read<A: MessageListener>(tcp_stream: TcpStream, listener: A) {
+    let mut message_reader = MessageReader::new(tcp_stream, listener);
+    message_reader.start();
 }
 
 struct ConnectionFactory {
@@ -88,11 +89,21 @@ impl ConnectionFactory {
 
         let our_addr = SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), 8555));
         let user_agent = self.config.user_agent().to_string();
-        let stream_numbers = vec![ 1 ];
-        let version_message = VersionMessage::new(3, 1, get_time(), peer_addr, our_addr, self.nonce, user_agent, stream_numbers);
+        let streams = vec![ 1 ];
+        let version_message = Message::Version {
+            version: 3,
+            services: 1,
+            timestamp: get_time(),
+            addr_recv: peer_addr,
+            addr_from: our_addr,
+            nonce: self.nonce,
+            user_agent: user_agent,
+            streams: streams
+        };
 
-        connection.send(Box::new(version_message));
-        match connection.listen(Box::new(PrintListener::new())) {
+        connection.send(version_message);
+        let listener = PrintListener::new();
+        match connection.listen(listener) {
             Ok(_) => {},
             Err(_) => connection.set_state(ConnectionState::Failed)
         };
@@ -122,7 +133,7 @@ impl PeerConnector
         println!("Max concurrent: {}", self.config.concurrent_connection_attempts());
         let known_node = self.known_nodes.get_random();
 
-        let peer_addr = known_node.socket_addr().clone();
+        let peer_addr = known_node.socket_addr;
         self.connection_factory.connect(peer_addr);
     }
 }

@@ -3,8 +3,8 @@ use crypto::{Sha512Digest,sha512};
 use message::{MAX_PAYLOAD_LENGTH_FOR_OBJECT};
 use std::cmp::max;
 use std::io::Cursor;
-use bm_time::TimeFn;
 use time::Timespec;
+use timegen::TimeGenerator;
 
 #[derive(Debug,PartialEq)]
 pub enum TimeToLiveError {
@@ -12,21 +12,21 @@ pub enum TimeToLiveError {
     ObjectLivesTooLong
 }
 
-pub struct ProofOfWorkConfig {
+pub struct ProofOfWorkConfig<T: TimeGenerator> {
     trials_per_byte: u64,
     extra_bytes: u64,
     minimum_ttl: i64,
     maximum_ttl: u32,
     tide_ttl: u32,
-    time_fn: TimeFn
+    time_fn: T
 }
 
-impl ProofOfWorkConfig {
-    pub fn new(trials_per_byte: u64, extra_bytes: u64, minimum_ttl: i64, maximum_ttl: u32, tide_ttl: u32, time_fn: TimeFn) -> ProofOfWorkConfig {
+impl<T: TimeGenerator> ProofOfWorkConfig<T> {
+    pub fn new(trials_per_byte: u64, extra_bytes: u64, minimum_ttl: i64, maximum_ttl: u32, tide_ttl: u32, time_fn: T) -> ProofOfWorkConfig<T> {
         assert!(tide_ttl > 0);
         assert!(trials_per_byte > 0);
 
-        ProofOfWorkConfig {
+        ProofOfWorkConfig::<T> {
             trials_per_byte: trials_per_byte,
             extra_bytes: extra_bytes,
             minimum_ttl: minimum_ttl,
@@ -81,7 +81,7 @@ fn to_generate_error(e: TimeToLiveError) -> GenerateError {
     }
 }
 
-pub fn generate_proof(payload: &[u8], expiry: Timespec, config: ProofOfWorkConfig) -> Result<u64,GenerateError> {
+pub fn generate_proof<T: TimeGenerator>(payload: &[u8], expiry: Timespec, config: ProofOfWorkConfig<T>) -> Result<u64,GenerateError> {
     assert!((8 + payload.len()) <= u32::max_value() as usize);
 
     let full_payload_length = 8u32 + payload.len() as u32;
@@ -103,7 +103,7 @@ fn to_verify_error(e: TimeToLiveError) -> VerifyError {
     }
 }
 
-pub fn verify_proof(nonce: u64, payload: &[u8], expiry: Timespec, config: ProofOfWorkConfig) -> Result<(),VerifyError> {
+pub fn verify_proof<T: TimeGenerator>(nonce: u64, payload: &[u8], expiry: Timespec, config: ProofOfWorkConfig<T>) -> Result<(),VerifyError> {
     let target = try!(target(payload.len() as u32, expiry, config).map_err(to_verify_error));
 
     let Sha512Digest(initial_hash) = sha512(payload);
@@ -159,7 +159,7 @@ fn first_8_of_double_digest(input: &[u8]) -> u64 {
     output_cursor.read_u64::<BigEndian>().unwrap()
 }
 
-fn target(payload_length: u32, expiry: Timespec, config: ProofOfWorkConfig) -> Result<u64,TimeToLiveError> {
+fn target<T: TimeGenerator>(payload_length: u32, expiry: Timespec, config: ProofOfWorkConfig<T>) -> Result<u64,TimeToLiveError> {
     assert!(payload_length > 0);
     assert!(payload_length <= MAX_PAYLOAD_LENGTH_FOR_OBJECT);
     let ttl = try!(config.ttl(expiry));
@@ -185,8 +185,8 @@ fn target_f64(payload_length: f64, time_to_live: f64, trials_per_byte: f64, extr
 
 #[cfg(test)]
 mod tests {
-use super::generate_pow_given_target;
-use super::target_from_ttl;
+    use super::generate_pow_given_target;
+    use super::target_from_ttl;
 
     #[test]
     fn test_generate_pow_given_target() {

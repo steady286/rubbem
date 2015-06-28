@@ -1,5 +1,21 @@
-Be able to send and receive all messages
+More tests for read / write -- all the object types / version
+Read TODO - check all payload read
+Send responses back to the same peer
+Clean up ParseError enum
 Loop in PeerConnector creating connections and ensuring they are still valid
  - States on a connection
-Send responses back to the same peer
+Implement Message listener
+ - Send responses back to the same peer - e.g. verack
+ - Filter messages that do not have an adequate POW
+ - Test encrypted messages for decryptability
 
+Message logic:
+
+Got         Do
+=======     =============================
+version     Send verack
+verack      Send addr * 1 + inv * n
+inv         Send (appropriate) getdata
+getdata     Send (appropriate) object * n
+addr        Send addr to other nodes???
+object      Send to other nodes???

@@ -1,8 +1,8 @@
-use known_nodes::KnownNode;
+use message::KnownNode;
 
 pub trait Persister {
     fn get_known_nodes(&self) -> &Vec<KnownNode>;
-    fn add_known_node(&mut self, known_node: KnownNode);
+    fn add_known_node(&mut self, known_node: &KnownNode);
 }
 
 pub struct MemoryPersister {
@@ -22,7 +22,7 @@ impl Persister for MemoryPersister {
         &self.known_nodes
     }
 
-    fn add_known_node(&mut self, known_node: KnownNode) {
-        self.known_nodes.push(known_node);
+    fn add_known_node(&mut self, known_node: &KnownNode) {
+        self.known_nodes.push(known_node.clone());
     }
 }

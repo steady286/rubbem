@@ -1,3 +1,4 @@
+use message::KnownNode;
 use persist::Persister;
 use rand::OsRng;
 use rand::Rng;
@@ -31,55 +32,8 @@ impl KnownNodes {
         rng.choose(&known_nodes[..]).unwrap().clone()
     }
 
-    pub fn add_known_node<A: ToSocketAddrs>(&self, stream: u32, services: u64, address: A) -> Result<()>
+    pub fn add_known_node(&self, known_node: &KnownNode)
     {
-        let now = get_time();
-
-        for socket_addr in try!(address.to_socket_addrs()) {
-            let known_node = KnownNode::new(now, stream, services, socket_addr).unwrap();
-            self.persister.write().unwrap().add_known_node(known_node);
-        }
-
-        Ok(())
+        self.persister.write().unwrap().add_known_node(known_node);
     }
 }
-
-#[derive(Clone,Copy,Debug,PartialEq)]
-pub struct KnownNode {
-    last_seen: Timespec,
-    stream: u32,
-    services: u64,
-    socket_addr: SocketAddr
-}
-
-impl KnownNode {
-    pub fn new<A: ToSocketAddrs>(last_seen: Timespec, stream: u32, services: u64, address: A) -> Result<KnownNode> {
-        for socket_addr in try!(address.to_socket_addrs()) {
-            return Ok(KnownNode {
-                last_seen: last_seen,
-                stream: stream,
-                services: services,
-                socket_addr: socket_addr
-            });
-        }
-
-        Err(Error::new(ErrorKind::AddrNotAvailable, "No address"))
-    }
-
-    pub fn last_seen(&self) -> Timespec {
-        self.last_seen
-    }
-
-    pub fn stream(&self) -> u32 {
-        self.stream
-    }
-
-    pub fn services(&self) -> u64 {
-        self.services
-    }
-
-    pub fn socket_addr(&self) -> &SocketAddr {
-        &self.socket_addr
-    }
-}
-
