@@ -4,7 +4,6 @@ extern crate rand;
 extern crate sodiumoxide;
 extern crate time;
 
-mod bm_time;
 mod channel;
 mod config;
 mod connection;
@@ -22,12 +21,9 @@ use message::KnownNode;
 use net::to_socket_addr;
 use peer::PeerConnector;
 use persist::Persister;
-use rand::OsRng;
-use rand::Rng;
 use time::get_time;
 
 pub enum BMError {
-    NoRng,
     NoDiskAccess,
     Network
 }
@@ -54,11 +50,7 @@ impl BMClient {
 
     pub fn start(&mut self) {
         bootstrap_known_nodes(&mut self.known_nodes);
-
-        let mut rng: Box<OsRng> = Box::new(OsRng::new().unwrap());
-        let nonce = rng.next_u64();
-
-        PeerConnector::new(&self.config, &self.known_nodes, nonce).start();
+        PeerConnector::new(&self.config, &self.known_nodes).start();
     }
 }
 

@@ -134,7 +134,6 @@ mod tests {
     use net::to_socket_addr;
     use rand::{Rng,SeedableRng,XorShiftRng};
     use std::io::Cursor;
-    use std::net::{SocketAddr,ToSocketAddrs};
     use time::Timespec;
     use super::{InventoryVector,KnownNode,Message,Object,GetPubKey};
     use super::{read_message,write_message};

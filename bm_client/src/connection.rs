@@ -1,8 +1,9 @@
 use channel::{ConstrainedReceiver,ConstrainedSender,constrained_channel};
+use config::Config;
 use message::{Message,ParseError,read_message,write_message};
 use net::to_socket_addr;
 use std::io::{Error,Write};
-use std::net::{Shutdown,SocketAddr,TcpStream};
+use std::net::{Ipv4Addr,Shutdown,SocketAddr,SocketAddrV4,TcpStream};
 use std::sync::{Arc,RwLock};
 use std::sync::mpsc::{Receiver,SyncSender,TryRecvError,sync_channel};
 use std::thread::{Builder,JoinHandle,sleep_ms};
@@ -20,19 +21,43 @@ pub enum ConnectionState {
     Error
 }
 
-pub type State = Arc<RwLock<ConnectionState>>;
+#[derive(Debug,Clone)]
+pub struct StateHolder {
+    state: Arc<RwLock<ConnectionState>>
+}
+
+impl StateHolder {
+    fn new(state: ConnectionState) -> StateHolder {
+        StateHolder {
+            state: Arc::new(RwLock::new(state))
+        }
+    }
+
+    fn get_state(&self) -> ConnectionState {
+        *self.state.read().unwrap()
+    }
+
+    fn set_state(&self, new_value: ConnectionState) {
+        let mut guard = self.state.write().unwrap();
+        *guard = new_value;
+    }
+}
 
 pub struct Connection {
-    pub state: State,
+    state: StateHolder,
     tcp_stream: Option<TcpStream>
 }
 
 impl Connection {
-    pub fn new(socket_addr: SocketAddr, nonce: u64) -> Connection {
+    pub fn new(config: &Config, socket_addr: SocketAddr) -> Connection {
         match TcpStream::connect(&socket_addr) {
-            Ok(tcp_stream) => new_from_stream(tcp_stream, nonce),
+            Ok(tcp_stream) => new_from_stream(config, tcp_stream),
             Err(_) => error_connection(None)
         }
+    }
+
+    pub fn state(&self) -> ConnectionState {
+        self.state.get_state()
     }
 }
 
@@ -44,9 +69,9 @@ impl Drop for Connection {
     }
 }
 
-fn new_from_stream(tcp_stream: TcpStream, nonce: u64) -> Connection {
+fn new_from_stream(config: &Config, tcp_stream: TcpStream) -> Connection {
     let socket_addr = tcp_stream.peer_addr().unwrap();
-    let state = Arc::new(RwLock::new(ConnectionState::Fresh(get_time())));
+    let state = StateHolder::new(ConnectionState::Fresh(get_time()));
 
     // Make channels for thread communication
     let (read_state_tx, read_state_rx) = sync_channel(0);
@@ -63,7 +88,7 @@ fn new_from_stream(tcp_stream: TcpStream, nonce: u64) -> Connection {
 
     // Make thread to create appropriate response messages
     let response_name = format!("Connection {} - response", socket_addr);
-    let response_thread = create_response_thread(response_name, socket_addr, nonce, state_response_rx, response_write_tx);
+    let response_thread = create_response_thread(response_name, config, socket_addr, state_response_rx, response_write_tx);
 
     // Make thread to write messages to the peer
     let write_name = format!("Connection {} - write", socket_addr);
@@ -81,7 +106,7 @@ fn new_from_stream(tcp_stream: TcpStream, nonce: u64) -> Connection {
 
 fn error_connection(tcp_stream: Option<TcpStream>) -> Connection {
     Connection {
-        state: Arc::new(RwLock::new(ConnectionState::Error)),
+        state: StateHolder::new(ConnectionState::Error),
         tcp_stream: tcp_stream
     }
 }
@@ -102,10 +127,10 @@ fn create_read_thread(name: String, borrowed_stream: &TcpStream, state_chan: Syn
     })
 }
 
-fn create_state_thread(name: String, state: State, read_chan: Receiver<Result<Message,ParseError>>, response_chan: ConstrainedSender<Message>) -> Result<JoinHandle<()>,Error> {
+fn create_state_thread(name: String, state_holder: StateHolder, read_chan: Receiver<Result<Message,ParseError>>, response_chan: ConstrainedSender<Message>) -> Result<JoinHandle<()>,Error> {
     Builder::new().name(name).spawn(move || {
         loop {
-            let current_state = get_state(&state);
+            let current_state = state_holder.get_state();
 
             let (new_state, forward_messages) = match (current_state, read_chan.try_recv()) {
                 (_, Err(TryRecvError::Empty)) => (current_state, vec![]),
@@ -122,40 +147,22 @@ fn create_state_thread(name: String, state: State, read_chan: Receiver<Result<Me
                 (_, Ok(Ok(_))) => (current_state, vec![])
             };
 
-            set_state(&state, new_state);
+            state_holder.set_state(new_state);
             for forward_message in forward_messages.into_iter() {
                 response_chan.send(forward_message).unwrap();
             }
 
-            if new_state == ConnectionState::Error {
-                break;
+            match new_state {
+                ConnectionState::Fresh(time) => check_staleness(&state_holder, time, Duration::seconds(20)),
+                ConnectionState::GotVersionAwaitingVerack(time) => check_staleness(&state_holder, time, Duration::seconds(20)),
+                ConnectionState::GotVerackAwaitingVersion(time) => check_staleness(&state_holder, time, Duration::seconds(20)),
+                ConnectionState::Established(time) => check_staleness(&state_holder, time, Duration::minutes(10)),
+                _ => {}
             }
 
-            match current_state {
-                ConnectionState::Fresh(time) => {
-                    let now = get_time();
-                    if now > time + Duration::seconds(20) {
-                        set_state(&state, ConnectionState::Stale);
-                    }
-                },
-                ConnectionState::GotVersionAwaitingVerack(time) => {
-                    let now = get_time();
-                    if now > time + Duration::seconds(20) {
-                        set_state(&state, ConnectionState::Stale);
-                    }
-                },
-                ConnectionState::GotVerackAwaitingVersion(time) => {
-                    let now = get_time();
-                    if now > time + Duration::seconds(20) {
-                        set_state(&state, ConnectionState::Stale);
-                    }
-                },
-                ConnectionState::Established(time) => {
-                    let now = get_time();
-                    if now > time + Duration::minutes(10) {
-                        set_state(&state, ConnectionState::Stale)
-                    }
-                },
+            match state_holder.get_state() {
+                ConnectionState::Stale => break,
+                ConnectionState::Error => break,
                 _ => {}
             }
 
@@ -164,18 +171,17 @@ fn create_state_thread(name: String, state: State, read_chan: Receiver<Result<Me
     })
 }
 
-fn get_state(state: &State) -> ConnectionState {
-    *state.read().unwrap()
+fn check_staleness(state_holder: &StateHolder, time: Timespec, duration: Duration) {
+    let now = get_time();
+    if now > time + duration {
+        state_holder.set_state(ConnectionState::Stale);
+    }
 }
 
-fn set_state(state: &State, new_value: ConnectionState) {
-    let mut guard = state.write().unwrap();
-    *guard = new_value;
-}
-
-fn create_response_thread(name: String, socket_addr: SocketAddr, nonce: u64, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> Result<JoinHandle<()>,Error> {
+fn create_response_thread(name: String, borrowed_config: &Config, socket_addr: SocketAddr, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> Result<JoinHandle<()>,Error> {
+    let config = borrowed_config.clone();
     Builder::new().name(name).spawn(move || {
-        if let Err(_) = write_chan.send(create_version_message(socket_addr, nonce)) {
+        if let Err(_) = write_chan.send(create_version_message(&config, socket_addr)) {
             return;
         }
 
@@ -208,9 +214,11 @@ fn create_response_thread(name: String, socket_addr: SocketAddr, nonce: u64, sta
     })
 }
 
-fn create_version_message(peer_addr: SocketAddr, nonce: u64) -> Message {
-    let our_addr = to_socket_addr("127.0.0.1:8555");
-    let user_agent = "Rubbem".to_string();
+fn create_version_message(config: &Config, peer_addr: SocketAddr) -> Message {
+    let port = config.port();
+    let our_addr = to_socket_addr(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port));
+    let nonce = config.nonce();
+    let user_agent = config.user_agent().to_string();
     let streams = vec![ 1 ];
 
     Message::Version {

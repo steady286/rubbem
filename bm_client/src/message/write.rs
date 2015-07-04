@@ -328,14 +328,6 @@ fn write_var_int_16(output: &mut Vec<u8>, value: u16) {
     }
 }
 
-// fn write_var_int_8(output: &mut Vec<u8>, value: u8) {
-//     if value < 0xfd {
-//         write_small_var_int_8(output, value);
-//     } else {
-//         write_var_int_16(output, value as u16);
-//     }
-// }
-
 fn write_small_var_int_8(output: &mut Vec<u8>, value: u8) {
     output.push(value);
 }
@@ -369,7 +361,6 @@ mod tests {
     use super::write_var_int_64;
     use super::write_var_int_32;
     use super::write_var_int_16;
-    use super::write_var_int_8;
 
     #[test]
     fn test_write_address_and_port_for_v4() {
@@ -435,10 +426,6 @@ mod tests {
         for v in 0..0xfd {
             let expected = vec![ v ];
 
-            let mut payload_8 = vec![];
-            write_var_int_8(&mut payload_8, v);
-            assert_eq!(payload_8, expected);
-
             let mut payload_16 = vec![];
             write_var_int_16(&mut payload_16, v as u16);
             assert_eq!(payload_16, expected);
@@ -457,10 +444,6 @@ mod tests {
     fn test_write_var_int_three_bytes_low() {
         for v in 0xfdu64..0x100 {
             let expected = vec![ 0xfd, 0, v as u8 ];
-
-            let mut payload_8 = vec![];
-            write_var_int_8(&mut payload_8, v as u8);
-            assert_eq!(payload_8, expected);
 
             let mut payload_16 = vec![];
             write_var_int_16(&mut payload_16, v as u16);
