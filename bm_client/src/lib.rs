@@ -4,6 +4,8 @@ extern crate rand;
 extern crate sodiumoxide;
 extern crate time;
 
+mod macros;
+
 mod channel;
 mod config;
 mod connection;

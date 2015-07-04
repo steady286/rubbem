@@ -181,9 +181,7 @@ fn check_staleness(state_holder: &StateHolder, time: Timespec, duration: Duratio
 fn create_response_thread(name: String, borrowed_config: &Config, socket_addr: SocketAddr, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> Result<JoinHandle<()>,Error> {
     let config = borrowed_config.clone();
     Builder::new().name(name).spawn(move || {
-        if let Err(_) = write_chan.send(create_version_message(&config, socket_addr)) {
-            return;
-        }
+        return_on_err!(write_chan.send(create_version_message(&config, socket_addr)));
 
         loop {
             let message = match state_chan.recv() {
@@ -193,9 +191,7 @@ fn create_response_thread(name: String, borrowed_config: &Config, socket_addr: S
 
             match message {
                 Message::Version { .. } => {
-                    if let Err(_) = write_chan.send(Message::Verack) {
-                        break;
-                    }
+                    break_on_err!(write_chan.send(Message::Verack));
                 },
                 Message::Verack => {
 //                     create addr_message
@@ -245,9 +241,7 @@ fn create_write_thread(name: String, borrowed_stream: &TcpStream, response_chan:
             let mut message_bytes = vec![];
             write_message(&mut message_bytes, &message);
 
-            if let Err(_) = stream.write_all(&message_bytes) {
-                break;
-            }
+            break_on_err!(stream.write_all(&message_bytes));
         }
     })
 }
