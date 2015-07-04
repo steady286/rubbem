@@ -1,9 +1,7 @@
 use channel::{ConstrainedReceiver,ConstrainedSender,constrained_channel};
-use config::Config;
-use message::{Message,ParseError,read_message,write_message};
-use net::to_socket_addr;
+use message::{Message,MessageResponder,ParseError,read_message,write_message};
 use std::io::{Error,Write};
-use std::net::{Ipv4Addr,Shutdown,SocketAddr,SocketAddrV4,TcpStream};
+use std::net::{Shutdown,SocketAddr,TcpStream};
 use std::sync::{Arc,RwLock};
 use std::sync::mpsc::{Receiver,SyncSender,TryRecvError,sync_channel};
 use std::thread::{Builder,JoinHandle,sleep_ms};
@@ -49,9 +47,9 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(config: &Config, socket_addr: SocketAddr) -> Connection {
+    pub fn new(message_responder: MessageResponder, socket_addr: SocketAddr) -> Connection {
         match TcpStream::connect(&socket_addr) {
-            Ok(tcp_stream) => new_from_stream(config, tcp_stream),
+            Ok(tcp_stream) => new_from_stream(message_responder, tcp_stream),
             Err(_) => error_connection(None)
         }
     }
@@ -69,7 +67,7 @@ impl Drop for Connection {
     }
 }
 
-fn new_from_stream(config: &Config, tcp_stream: TcpStream) -> Connection {
+fn new_from_stream(message_responder: MessageResponder, tcp_stream: TcpStream) -> Connection {
     let socket_addr = tcp_stream.peer_addr().unwrap();
     let state = StateHolder::new(ConnectionState::Fresh(get_time()));
 
@@ -88,7 +86,7 @@ fn new_from_stream(config: &Config, tcp_stream: TcpStream) -> Connection {
 
     // Make thread to create appropriate response messages
     let response_name = format!("Connection {} - response", socket_addr);
-    let response_thread = create_response_thread(response_name, config, socket_addr, state_response_rx, response_write_tx);
+    let response_thread = create_response_thread(response_name, message_responder, state_response_rx, response_write_tx);
 
     // Make thread to write messages to the peer
     let write_name = format!("Connection {} - write", socket_addr);
@@ -178,65 +176,22 @@ fn check_staleness(state_holder: &StateHolder, time: Timespec, duration: Duratio
     }
 }
 
-fn create_response_thread(name: String, borrowed_config: &Config, socket_addr: SocketAddr, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> Result<JoinHandle<()>,Error> {
-    let config = borrowed_config.clone();
+fn create_response_thread(name: String, message_responder: MessageResponder, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> Result<JoinHandle<()>,Error> {
     Builder::new().name(name).spawn(move || {
-        return_on_err!(write_chan.send(create_version_message(&config, socket_addr)));
+        return_on_err!(message_responder.send_version(|m| write_chan.send(m)));
 
         loop {
-            let message = match state_chan.recv() {
-                Ok(m) => m,
-                Err(_) => break
-            };
-
-            match message {
-                Message::Version { .. } => {
-                    break_on_err!(write_chan.send(Message::Verack));
-                },
-                Message::Verack => {
-//                     create addr_message
-//                     create inv messages
-                },
-                Message::Addr { .. } => {},
-                Message::Inv { .. } => {
-//                    create_filtered_getdata_message
-                },
-                Message::GetData { .. } => {
-//                    create object messages
-                },
-                Message::Object { .. } => {}
-            };
+            let message = break_on_err!(state_chan.recv());
+            break_on_err!(message_responder.respond(message, |m| write_chan.send(m)));
         }
     })
-}
-
-fn create_version_message(config: &Config, peer_addr: SocketAddr) -> Message {
-    let port = config.port();
-    let our_addr = to_socket_addr(SocketAddrV4::new(Ipv4Addr::new(127, 0, 0, 1), port));
-    let nonce = config.nonce();
-    let user_agent = config.user_agent().to_string();
-    let streams = vec![ 1 ];
-
-    Message::Version {
-        version: 3,
-        services: 1,
-        timestamp: get_time(),
-        addr_recv: peer_addr,
-        addr_from: our_addr,
-        nonce: nonce,
-        user_agent: user_agent,
-        streams: streams
-    }
 }
 
 fn create_write_thread(name: String, borrowed_stream: &TcpStream, response_chan: Receiver<Message>) -> Result<JoinHandle<()>,Error> {
     let mut stream = borrowed_stream.try_clone().unwrap();
     Builder::new().name(name).spawn(move || {
         loop {
-            let message = match response_chan.recv() {
-                Ok(m) => m,
-                Err(_) => break
-            };
+            let message = break_on_err!(response_chan.recv());
 
             let mut message_bytes = vec![];
             write_message(&mut message_bytes, &message);

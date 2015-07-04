@@ -1,8 +1,10 @@
 //mod pow;
 mod read;
+mod responder;
 mod write;
 
 pub use self::read::ParseError;
+pub use self::responder::MessageResponder;
 pub use self::read::read_message;
 pub use self::write::write_message;
 

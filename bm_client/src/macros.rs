@@ -16,3 +16,12 @@ macro_rules! return_on_err {
         }
     })
 }
+
+macro_rules! break_on_none (
+    ($expr:expr) => ({
+        match $expr {
+            Some(val) => val,
+            None => break
+        }
+    })
+);
