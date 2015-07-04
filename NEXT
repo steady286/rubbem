@@ -1,13 +1,11 @@
+The connection should be able to create all the messages it needs to
 More tests for read / write -- all the object types / version
-Read TODO - check all payload read
-Send responses back to the same peer
+read.rs TODO - check all payload read
 Clean up ParseError enum
-Loop in PeerConnector creating connections and ensuring they are still valid
- - States on a connection
-Implement Message listener
- - Send responses back to the same peer - e.g. verack
- - Filter messages that do not have an adequate POW
- - Test encrypted messages for decryptability
+Communicate messages from the connection to the wider bm_client
+Filter messages that do not have an adequate POW
+Test encrypted messages for decryptability
+Cope better with failing to connect to enough peers in peer.rs loop
 
 Message logic:
 
@@ -19,3 +17,10 @@ inv         Send (appropriate) getdata
 getdata     Send (appropriate) object * n
 addr        Send addr to other nodes???
 object      Send to other nodes???
+
+
+
+
+
+TODO:
+better calculation of memory usage in "impl MemorySize for Message"

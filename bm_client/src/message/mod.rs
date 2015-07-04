@@ -1,11 +1,13 @@
-mod pow;
+//mod pow;
 mod read;
 mod write;
 
-pub use self::read::MessageReader;
+pub use self::read::ParseError;
 pub use self::read::read_message;
 pub use self::write::write_message;
 
+use channel::MemorySize;
+use std::mem;
 use std::net::SocketAddr;
 use time::Timespec;
 
@@ -15,8 +17,8 @@ const MAX_NODES_COUNT: usize = 1000;
 const MAX_GETDATA_COUNT: usize = 50000;
 const MAX_INV_COUNT: usize = 50000;
 const MAX_PAYLOAD_LENGTH_FOR_OBJECT: u32 = 262144; // 2^18 - maximum object length
-const MAX_TTL: u32 = 2430000; // 28 days and 3 hours
-const OBJECT_EXPIRY_CUTOFF: i64 = -3600; // 1 hour ago
+// const MAX_TTL: u32 = 2430000; // 28 days and 3 hours
+// const OBJECT_EXPIRY_CUTOFF: i64 = -3600; // 1 hour ago
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct InventoryVector {
@@ -112,8 +114,19 @@ pub enum Message {
     },
 }
 
-pub trait MessageListener : Send {
-    fn message(&self, message: &Message);
+impl MemorySize for Message {
+    fn byte_count(&self) -> usize {
+        let extra_bytes = match self {
+            &Message::Addr {ref addr_list } => 9 + (42 * addr_list.len()),
+            &Message::GetData { ref inventory, .. } => 9 + (32 * inventory.len()),
+            &Message::Inv { ref inventory, .. } => 9 + (32 * inventory.len()),
+            &Message::Version { ref streams, ref user_agent, .. } => 86 + user_agent.len() + (8 * streams.len()),
+            &Message::Verack => 0,
+            &Message::Object { .. }=> MAX_PAYLOAD_LENGTH_FOR_OBJECT as usize
+        };
+
+        mem::size_of::<Message>() + extra_bytes
+    }
 }
 
 #[cfg(test)]

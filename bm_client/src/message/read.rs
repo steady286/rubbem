@@ -7,7 +7,7 @@ use std::io::{Cursor,Read};
 use std::net::{Ipv6Addr,SocketAddr,SocketAddrV4,SocketAddrV6};
 use time::Timespec;
 
-use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message,MessageListener};
+use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message};
 use super::{MAGIC,MAX_GETDATA_COUNT,MAX_INV_COUNT,MAX_NODES_COUNT,MAX_PAYLOAD_LENGTH};
 
 #[derive(Debug,PartialEq)]
@@ -24,32 +24,9 @@ pub enum ParseError {
     UnexpectedPayloadEnd,
     UnknownObjectType,
     UnknownObjectVersion,
-    ObjectExpired,
-    ObjectLivesTooLong,
-    UnacceptablePow
-}
-
-pub struct MessageReader<R: Read, L: MessageListener> {
-    source: R,
-    listener: L
-}
-
-impl<R: Read, L: MessageListener> MessageReader<R,L> {
-    pub fn new(source: R, listener: L) -> MessageReader<R,L> {
-        MessageReader {
-            source: source,
-            listener: listener
-        }
-    }
-
-    pub fn start(&mut self) {
-        loop {
-            match read_message(&mut self.source) {
-                Ok(m) => self.listener.message(&m),
-                Err(_) => break
-            }
-        }
-    }
+    // ObjectExpired,
+    // ObjectLivesTooLong,
+    // UnacceptablePow
 }
 
 pub fn read_message<A: Read>(source: &mut A) -> Result<Message,ParseError> {
@@ -449,12 +426,12 @@ fn read_bytes<A: Read>(source: &mut A, count: usize) -> Result<Vec<u8>,ParseErro
     Ok(bytes)
 }
 
-fn read_remaining_bytes<A: Read>(source: &mut A) -> Result<Vec<u8>, ParseError> {
-    let mut bytes: Vec<u8> = vec![];
-    try!(source.read_to_end(&mut bytes).map_err(|_| ParseError::UnexpectedPayloadEnd));
-
-    Ok(bytes)
-}
+// fn read_remaining_bytes<A: Read>(source: &mut A) -> Result<Vec<u8>, ParseError> {
+//     let mut bytes: Vec<u8> = vec![];
+//     try!(source.read_to_end(&mut bytes).map_err(|_| ParseError::UnexpectedPayloadEnd));
+//
+//     Ok(bytes)
+// }
 
 fn read_u64<A: Read>(source: &mut A) -> Result<u64,ParseError> {
     source.read_u64::<BigEndian>().map_err(|_| ParseError::UnexpectedPayloadEnd)

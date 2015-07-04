@@ -5,7 +5,9 @@ extern crate sodiumoxide;
 extern crate time;
 
 mod bm_time;
+mod channel;
 mod config;
+mod connection;
 mod crypto;
 mod known_nodes;
 mod message;
@@ -19,12 +21,9 @@ use known_nodes::KnownNodes;
 use message::KnownNode;
 use net::to_socket_addr;
 use peer::PeerConnector;
-use persist::MemoryPersister;
 use persist::Persister;
 use rand::OsRng;
 use rand::Rng;
-use std::rc::Rc;
-use std::sync::RwLock;
 use time::get_time;
 
 pub enum BMError {
@@ -34,8 +33,8 @@ pub enum BMError {
 }
 
 pub struct BMClient {
-    config: Rc<Box<Config>>,
-    known_nodes: Rc<Box<KnownNodes>>
+    config: Config,
+    known_nodes: KnownNodes
 }
 
 impl BMClient {
@@ -43,9 +42,9 @@ impl BMClient {
         // Move this to a Result returned from new()
         // assert!(usize::max_value() >= u32::max_value(), "You must use at least a 32-bit system");
 
-        let config = Rc::new(Box::new(Config::new()));
-        let persister: Rc<RwLock<Box<Persister>>> = Rc::new(RwLock::new(Box::new(MemoryPersister::new())));
-        let known_nodes = Rc::new(Box::new(KnownNodes::new(persister.clone())));
+        let config = Config::new();
+        let persister = Persister::new();
+        let known_nodes = KnownNodes::new(persister);
 
         BMClient {
             config: config,
@@ -53,18 +52,17 @@ impl BMClient {
         }
     }
 
-    pub fn start(&self) {
-        let known_nodes_clone = self.known_nodes.clone();
-        bootstrap_known_nodes(known_nodes_clone);
+    pub fn start(&mut self) {
+        bootstrap_known_nodes(&mut self.known_nodes);
 
         let mut rng: Box<OsRng> = Box::new(OsRng::new().unwrap());
         let nonce = rng.next_u64();
 
-        PeerConnector::new(self.config.clone(), self.known_nodes.clone(), nonce).start();
+        PeerConnector::new(&self.config, &self.known_nodes, nonce).start();
     }
 }
 
-fn bootstrap_known_nodes(known_nodes: Rc<Box<KnownNodes>>) {
+fn bootstrap_known_nodes(known_nodes: &mut KnownNodes) {
     if known_nodes.len() == 0 {
         for known_node in bootstrap_nodes() {
             known_nodes.add_known_node(&known_node);
@@ -83,4 +81,3 @@ fn bootstrap_nodes() -> Vec<KnownNode> {
         }
     ]
 }
-

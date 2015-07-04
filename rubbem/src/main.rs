@@ -5,7 +5,7 @@ use gtk::traits::*;
 use bm_client::BMClient;
 
 fn main() {
-    let bm_client = BMClient::new();
+    let mut bm_client = BMClient::new();
     bm_client.start();
 
     match gtk::init() {
@@ -35,4 +35,3 @@ fn gtk_window(window: gtk::Window)
     window.show_all();
     gtk::main();
 }
-

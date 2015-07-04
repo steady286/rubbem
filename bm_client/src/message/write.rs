@@ -53,36 +53,36 @@ fn ensure_size(bytes: &mut Vec<u8>, size: usize, padding: u8) {
 fn write_payload(output: &mut Vec<u8>, message: &Message) {
     match message {
         &Message::Addr {
-            addr_list: ref addr_list
+            ref addr_list
         } => write_addr_message(output, addr_list),
 
         &Message::GetData {
-            inventory: ref inventory
+            ref inventory
         } => write_getdata_message(output, inventory),
 
         &Message::Inv {
-            inventory: ref inventory
+            ref inventory
         } => write_inv_message(output, inventory),
 
         &Message::Version {
-            version: version,
-            services: services,
-            timestamp: ref timestamp,
-            addr_recv: ref addr_recv,
-            addr_from: ref addr_from,
-            nonce: nonce,
-            user_agent: ref user_agent,
-            streams: ref streams
+            version,
+            services,
+            ref timestamp,
+            ref addr_recv,
+            ref addr_from,
+            nonce,
+            ref user_agent,
+            ref streams
         } => write_version_message(output, version, services, timestamp, addr_recv, addr_from, nonce, user_agent, streams),
 
         &Message::Verack => write_verack_message(output),
 
         &Message::Object {
-            nonce: nonce,
-            expiry: ref expiry,
-            version: version,
-            stream: stream,
-            object: ref object
+            nonce,
+            ref expiry,
+            version,
+            stream,
+            ref object
         } => write_object_message(output, nonce, expiry, version, stream, object)
     }
 }
@@ -141,7 +141,7 @@ fn write_version_message(output: &mut Vec<u8>, version: u32, services: u64, time
     write_var_int_list(output, streams);
 }
 
-fn write_verack_message(output: &mut Vec<u8>) {
+fn write_verack_message(_: &mut Vec<u8>) {
 }
 
 fn write_object_message(output: &mut Vec<u8>, nonce: u64, expiry: &Timespec, version: u64, stream: u32, object: &Object) {
@@ -168,15 +168,15 @@ fn write_object(output: &mut Vec<u8>, object: &Object) {
     match object {
         &Object::GetPubKey(ref getpubkey) => write_getpubkey(output, getpubkey),
         &Object::PubKey(ref pubkey) => write_pubkey(output, pubkey),
-        &Object::Msg { encrypted: ref encrypted } => write_msg(output, encrypted),
+        &Object::Msg { ref encrypted } => write_msg(output, encrypted),
         &Object::Broadcast(ref broadcast) => write_broadcast(output, broadcast)
     }
 }
 
 fn write_getpubkey(output: &mut Vec<u8>, getpubkey: &GetPubKey) {
     match getpubkey {
-        &GetPubKey::V3 { ripe: ref ripe } => write_getpubkey_v3(output, ripe),
-        &GetPubKey::V4 { tag: ref tag } => write_getpubkey_v4(output, tag),
+        &GetPubKey::V3 { ref ripe } => write_getpubkey_v3(output, ripe),
+        &GetPubKey::V4 { ref tag } => write_getpubkey_v4(output, tag),
     }
 }
 
@@ -191,21 +191,21 @@ fn write_getpubkey_v4(output: &mut Vec<u8>, tag: &[u8]) {
 fn write_pubkey(output: &mut Vec<u8>, pubkey: &PubKey) {
     match pubkey {
         &PubKey::V2 {
-            behaviour_bitfield: behaviour_bitfield,
-            public_signing_key: ref public_signing_key,
-            public_encryption_key: ref public_encryption_key
+            behaviour_bitfield,
+            ref public_signing_key,
+            ref public_encryption_key
         } => write_pubkey_v2(output, behaviour_bitfield, public_signing_key, public_encryption_key),
         &PubKey::V3 {
-            behaviour_bitfield: behaviour_bitfield,
-            public_signing_key: ref public_signing_key,
-            public_encryption_key: ref public_encryption_key,
-            nonce_trials_per_byte: nonce_trials_per_byte,
-            extra_bytes: extra_bytes,
-            signature: ref signature
+            behaviour_bitfield,
+            ref public_signing_key,
+            ref public_encryption_key,
+            nonce_trials_per_byte,
+            extra_bytes,
+            ref signature
         } => write_pubkey_v3(output, behaviour_bitfield, public_signing_key, public_encryption_key, nonce_trials_per_byte, extra_bytes, signature),
         &PubKey::V4 {
-            tag: ref tag,
-            encrypted: ref encrypted
+            ref tag,
+            ref encrypted
         } => write_pubkey_v4(output, tag, encrypted)
     }
 }
@@ -237,11 +237,11 @@ fn write_msg(output: &mut Vec<u8>, encrypted: &[u8]) {
 fn write_broadcast(output: &mut Vec<u8>, broadcast: &Broadcast) {
     match broadcast {
         &Broadcast::V4 {
-            encrypted: ref encrypted
+            ref encrypted
         } => write_broadcast_v4(output, encrypted),
         &Broadcast::V5 {
-            tag: ref tag,
-            encrypted: ref encrypted
+            ref tag,
+            ref encrypted
         } => write_broadcast_v5(output, tag, encrypted)
     }
 }
@@ -328,13 +328,13 @@ fn write_var_int_16(output: &mut Vec<u8>, value: u16) {
     }
 }
 
-fn write_var_int_8(output: &mut Vec<u8>, value: u8) {
-    if value < 0xfd {
-        write_small_var_int_8(output, value);
-    } else {
-        write_var_int_16(output, value as u16);
-    }
-}
+// fn write_var_int_8(output: &mut Vec<u8>, value: u8) {
+//     if value < 0xfd {
+//         write_small_var_int_8(output, value);
+//     } else {
+//         write_var_int_16(output, value as u16);
+//     }
+// }
 
 fn write_small_var_int_8(output: &mut Vec<u8>, value: u8) {
     output.push(value);
@@ -356,9 +356,9 @@ fn write_u16(output: &mut Vec<u8>, value: u16) {
     output.write_u16::<BigEndian>(value).unwrap();
 }
 
-fn write_u8(output: &mut Vec<u8>, value: u8) {
-    output.write_u8(value).unwrap();
-}
+// fn write_u8(output: &mut Vec<u8>, value: u8) {
+//     output.write_u8(value).unwrap();
+// }
 
 #[cfg(test)]
 mod tests {

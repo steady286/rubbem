@@ -2,38 +2,31 @@ use message::KnownNode;
 use persist::Persister;
 use rand::OsRng;
 use rand::Rng;
-use std::io::{Error,ErrorKind,Result};
-use std::net::SocketAddr;
-use std::net::ToSocketAddrs;
-use std::rc::Rc;
-use std::sync::RwLock;
-use time::get_time;
-use time::Timespec;
 
+#[derive(Clone)]
 pub struct KnownNodes {
-    persister: Rc<RwLock<Box<Persister>>>
+    persister: Persister
 }
 
 impl KnownNodes {
-    pub fn new(persister: Rc<RwLock<Box<Persister>>>) -> KnownNodes {
+    pub fn new(persister: Persister) -> KnownNodes {
         KnownNodes {
-            persister: persister
+            persister: persister.clone()
         }
     }
 
     pub fn len(&self) -> usize {
-        self.persister.read().unwrap().get_known_nodes().len()
+        self.persister.get_known_nodes().len()
     }
 
     pub fn get_random(&self) -> KnownNode {
-        let persister = self.persister.read().unwrap();
-        let known_nodes: &Vec<KnownNode> = persister.get_known_nodes();
+        let known_nodes: Vec<KnownNode> = self.persister.get_known_nodes();
         let mut rng = OsRng::new().unwrap();
-        rng.choose(&known_nodes[..]).unwrap().clone()
+        rng.choose(&known_nodes).unwrap().clone()
     }
 
-    pub fn add_known_node(&self, known_node: &KnownNode)
+    pub fn add_known_node(&mut self, known_node: &KnownNode)
     {
-        self.persister.write().unwrap().add_known_node(known_node);
+        self.persister.add_known_node(known_node);
     }
 }
