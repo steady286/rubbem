@@ -54,6 +54,13 @@ impl Connection {
         }
     }
 
+    pub fn peer_addr(&self) -> Option<SocketAddr> {
+        match self.tcp_stream {
+            None => None,
+            Some(ref s) => Some(s.peer_addr().unwrap())
+        }
+    }
+
     pub fn state(&self) -> ConnectionState {
         self.state.get_state()
     }

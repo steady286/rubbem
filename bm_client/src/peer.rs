@@ -2,6 +2,7 @@ use config::Config;
 use connection::{Connection,ConnectionState};
 use known_nodes::KnownNodes;
 use message::MessageResponder;
+use std::net::SocketAddr;
 use std::thread::{Builder,sleep_ms};
 
 pub struct PeerConnector {
@@ -35,9 +36,9 @@ impl PeerConnector
                     current_state != ConnectionState::Error && current_state != ConnectionState::Stale
                 });
 
-                // TODO - don't try and connect to a peer we are already connected to
                 while connections.len() < connection_count_target {
-                    let known_node = break_on_none!(known_nodes.get_random());
+                    let socket_addrs_in_use: Vec<SocketAddr> = (&connections).iter().filter_map(|connection| connection.peer_addr()).collect();
+                    let known_node = break_on_none!(known_nodes.get_random_but_not(socket_addrs_in_use));
                     let peer_addr = known_node.socket_addr;
                     let message_responder = MessageResponder::new(&config, &known_nodes, peer_addr);
                     let connection = Connection::new(message_responder, peer_addr);

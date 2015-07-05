@@ -69,7 +69,7 @@ impl MessageResponder {
     }
 
     fn create_addr_message(&self) -> Message {
-        let addr_list = self.known_nodes.get_random_selection(MAX_NODES_COUNT);
+        let addr_list = self.known_nodes.get_random_selection_but_not(MAX_NODES_COUNT, vec![ self.peer_addr ]);
         Message::Addr {
             addr_list: addr_list
         }
