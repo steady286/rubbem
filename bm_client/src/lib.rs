@@ -7,9 +7,11 @@ extern crate time;
 mod macros;
 
 mod channel;
+mod chunk;
 mod config;
 mod connection;
 mod crypto;
+mod inventory;
 mod known_nodes;
 mod message;
 mod net;
@@ -18,6 +20,7 @@ mod persist;
 mod timegen;
 
 use config::Config;
+use inventory::Inventory;
 use known_nodes::KnownNodes;
 use message::KnownNode;
 use net::to_socket_addr;
@@ -32,7 +35,8 @@ pub enum BMError {
 
 pub struct BMClient {
     config: Config,
-    known_nodes: KnownNodes
+    known_nodes: KnownNodes,
+    inventory: Inventory
 }
 
 impl BMClient {
@@ -42,17 +46,19 @@ impl BMClient {
 
         let config = Config::new();
         let persister = Persister::new();
-        let known_nodes = KnownNodes::new(persister);
+        let known_nodes = KnownNodes::new(persister.clone());
+        let inventory = Inventory::new(persister);
 
         BMClient {
             config: config,
-            known_nodes: known_nodes
+            known_nodes: known_nodes,
+            inventory: inventory
         }
     }
 
     pub fn start(&mut self) {
         bootstrap_known_nodes(&mut self.known_nodes);
-        PeerConnector::new(&self.config, &self.known_nodes).start();
+        PeerConnector::new(&self.config, &self.known_nodes, &self.inventory).start();
     }
 }
 

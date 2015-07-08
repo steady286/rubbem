@@ -1,24 +1,28 @@
+use chunk::CreateChunk;
 use config::Config;
+use inventory::Inventory;
 use known_nodes::KnownNodes;
-use message::Message;
+use message::{InventoryVector,Message};
 use net::to_socket_addr;
 use std::sync::mpsc::SendError;
 use std::net::{Ipv4Addr,SocketAddr,SocketAddrV4};
 use time::{get_time};
 
-use super::MAX_NODES_COUNT;
+use super::{MAX_INV_COUNT,MAX_NODES_COUNT};
 
 pub struct MessageResponder {
     config: Config,
     known_nodes: KnownNodes,
+    inventory: Inventory,
     peer_addr: SocketAddr
 }
 
 impl MessageResponder {
-    pub fn new(config: &Config, known_nodes: &KnownNodes, peer_addr: SocketAddr) -> MessageResponder {
+    pub fn new(config: &Config, known_nodes: &KnownNodes, inventory: &Inventory, peer_addr: SocketAddr) -> MessageResponder {
         MessageResponder {
             config: config.clone(),
             known_nodes: known_nodes.clone(),
+            inventory: inventory.clone(),
             peer_addr: peer_addr
         }
     }
@@ -28,15 +32,20 @@ impl MessageResponder {
         f(self.create_version_message())
     }
 
-    pub fn respond<F>(&self, message: Message, f: F) -> Result<(), SendError<Message>>
+    pub fn respond<F>(&self, message: Message, send: F) -> Result<(), SendError<Message>>
         where F : Fn(Message) -> Result<(), SendError<Message>> {
         match message {
             Message::Version { .. } => {
-                try!(f(Message::Verack));
+                try!(send(Message::Verack));
             },
             Message::Verack => {
-                try!(f(self.create_addr_message()));
-//                     create inv messages
+                try!(send(self.create_addr_message()));
+
+                let inventory_iterator = self.inventory.iterator();
+                let chunk_iterator = inventory_iterator.chunk(MAX_INV_COUNT);
+                for inventory_chunk in chunk_iterator {
+                    try!(send(self.create_inv_message(inventory_chunk)));
+                }
             },
             Message::Addr { .. } => {},
             Message::Inv { .. } => {},
@@ -72,6 +81,12 @@ impl MessageResponder {
         let addr_list = self.known_nodes.get_random_selection_but_not(MAX_NODES_COUNT, vec![ self.peer_addr ]);
         Message::Addr {
             addr_list: addr_list
+        }
+    }
+
+    fn create_inv_message(&self, inventory_chunk: Vec<InventoryVector>) -> Message {
+        Message::Inv {
+            inventory: inventory_chunk
         }
     }
 }

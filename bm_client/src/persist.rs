@@ -1,5 +1,6 @@
-use message::KnownNode;
+use message::{InventoryVector,KnownNode};
 use std::sync::{Arc,RwLock};
+use std::vec::IntoIter;
 
 #[derive(Clone)]
 pub struct Persister {
@@ -22,16 +23,28 @@ impl Persister {
         let mut inner_write = self.inner.write().unwrap();
         inner_write.add_known_node(known_node);
     }
+
+    pub fn inventory_iterator(&self) -> IntoIter<InventoryVector> {
+        let inner_read = self.inner.read().unwrap();
+        inner_read.inventory_iterator()
+    }
+
+    pub fn add_to_inventory(&mut self, inventory_vector: &InventoryVector) {
+        let mut inner_write = self.inner.write().unwrap();
+        inner_write.add_to_inventory(inventory_vector);
+    }
 }
 
 pub struct MemoryPersister {
-    known_nodes: Vec<KnownNode>
+    known_nodes: Vec<KnownNode>,
+    inventory: Vec<InventoryVector>
 }
 
 impl MemoryPersister {
     pub fn new() -> MemoryPersister {
         MemoryPersister {
-            known_nodes: vec![]
+            known_nodes: vec![],
+            inventory: vec![]
         }
     }
 
@@ -41,5 +54,13 @@ impl MemoryPersister {
 
     fn add_known_node(&mut self, known_node: &KnownNode) {
         self.known_nodes.push(known_node.clone());
+    }
+
+    pub fn inventory_iterator(&self) -> IntoIter<InventoryVector> {
+        self.inventory.clone().into_iter()
+    }
+
+    fn add_to_inventory(&mut self, inventory_vector: &InventoryVector) {
+        self.inventory.push(inventory_vector.clone());
     }
 }
