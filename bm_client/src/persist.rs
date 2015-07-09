@@ -1,4 +1,5 @@
-use message::{InventoryVector,KnownNode};
+use message::{InventoryVector,KnownNode,Object};
+use std::collections::HashMap;
 use std::sync::{Arc,RwLock};
 use std::vec::IntoIter;
 
@@ -12,6 +13,11 @@ impl Persister {
         Persister {
             inner: Arc::new(RwLock::new(MemoryPersister::new()))
         }
+    }
+
+    pub fn get_object(&self, inventory_vector: &InventoryVector) -> Option<Object> {
+        let inner_read = self.inner.read().unwrap();
+        inner_read.get_object(inventory_vector)
     }
 
     pub fn get_known_nodes(&self) -> Vec<KnownNode> {
@@ -36,6 +42,7 @@ impl Persister {
 }
 
 pub struct MemoryPersister {
+    objects: HashMap<InventoryVector, Object>,
     known_nodes: Vec<KnownNode>,
     inventory: Vec<InventoryVector>
 }
@@ -43,9 +50,14 @@ pub struct MemoryPersister {
 impl MemoryPersister {
     pub fn new() -> MemoryPersister {
         MemoryPersister {
+            objects: HashMap::new(),
             known_nodes: vec![],
             inventory: vec![]
         }
+    }
+
+    pub fn get_object(&self, inventory_vector: &InventoryVector) -> Option<Object> {
+        self.objects.get(inventory_vector).cloned()
     }
 
     fn get_known_nodes(&self) -> Vec<KnownNode> {

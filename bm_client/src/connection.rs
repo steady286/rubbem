@@ -183,7 +183,7 @@ fn check_staleness(state_holder: &StateHolder, time: Timespec, duration: Duratio
     }
 }
 
-fn create_response_thread(name: String, message_responder: MessageResponder, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> Result<JoinHandle<()>,Error> {
+fn create_response_thread(name: String, mut message_responder: MessageResponder, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> Result<JoinHandle<()>,Error> {
     Builder::new().name(name).spawn(move || {
         return_on_err!(message_responder.send_version(|m| write_chan.send(m)));
 

@@ -32,10 +32,12 @@ impl MessageResponder {
         f(self.create_version_message())
     }
 
-    pub fn respond<F>(&self, message: Message, send: F) -> Result<(), SendError<Message>>
+    pub fn respond<F>(&mut self, message: Message, send: F) -> Result<(), SendError<Message>>
         where F : Fn(Message) -> Result<(), SendError<Message>> {
         match message {
             Message::Version { .. } => {
+                // record the peer as a known_node???
+                // check the version, stream, timestamp, nonce, etc.???
                 try!(send(Message::Verack));
             },
             Message::Verack => {
@@ -47,9 +49,15 @@ impl MessageResponder {
                     try!(send(self.create_inv_message(inventory_chunk)));
                 }
             },
-            Message::Addr { .. } => {},
-            Message::Inv { .. } => {},
-//                    create_filtered_getdata_message
+            Message::Addr { addr_list } => {
+                for known_node in addr_list.iter() {
+                    self.known_nodes.add_known_node(&known_node);
+                }
+            },
+            Message::Inv { inventory: inventory_chunk } => {
+                let get_data = self.inventory.unknown(inventory_chunk);
+                try!(send(self.create_getdata_message(get_data)));
+            },
             Message::GetData { .. } => {},
 //                    create object messages
             Message::Object { .. } => {}
@@ -86,6 +94,12 @@ impl MessageResponder {
 
     fn create_inv_message(&self, inventory_chunk: Vec<InventoryVector>) -> Message {
         Message::Inv {
+            inventory: inventory_chunk
+        }
+    }
+
+    fn create_getdata_message(&self, inventory_chunk: Vec<InventoryVector>) -> Message {
+        Message::GetData {
             inventory: inventory_chunk
         }
     }
