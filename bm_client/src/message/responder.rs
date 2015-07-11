@@ -36,8 +36,8 @@ impl MessageResponder {
         where F : Fn(Message) -> Result<(), SendError<Message>> {
         match message {
             Message::Version { .. } => {
-                // record the peer as a known_node???
-                // check the version, stream, timestamp, nonce, etc.???
+                // TODO - record the peer as a known_node???
+                // TODO - check the version, stream, timestamp, nonce, etc.???
                 try!(send(Message::Verack));
             },
             Message::Verack => {
@@ -58,9 +58,16 @@ impl MessageResponder {
                 let get_data = self.inventory.unknown(inventory_chunk);
                 try!(send(self.create_getdata_message(get_data)));
             },
-            Message::GetData { .. } => {},
-//                    create object messages
-            Message::Object { .. } => {}
+            Message::GetData { inventory: inventory_chunk } => {
+                for inventory_vector in inventory_chunk {
+                    if let Some(object_message) = self.inventory.get_object_message(&inventory_vector) {
+                        try!(send(object_message));
+                    }
+                }
+            },
+            m @ Message::Object { .. } => {
+                self.inventory.add_object_message(&m);
+            }
         };
 
         Ok(())

@@ -22,9 +22,9 @@ const MAX_PAYLOAD_LENGTH_FOR_OBJECT: u32 = 262144; // 2^18 - maximum object leng
 // const MAX_TTL: u32 = 2430000; // 28 days and 3 hours
 // const OBJECT_EXPIRY_CUTOFF: i64 = -3600; // 1 hour ago
 
-#[derive(Clone,Debug,PartialEq,Eq,Hash)]
+#[derive(Clone,Debug,PartialEq,Eq,Hash,PartialOrd,Ord)]
 pub struct InventoryVector {
-    hash: Vec<u8> // 32 bytes
+    pub hash: Vec<u8> // 32 bytes
 }
 
 #[derive(Clone,Debug,PartialEq)]
