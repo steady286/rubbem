@@ -111,3 +111,156 @@ impl MessageResponder {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use config::Config;
+    use inventory::{Inventory,calculate_inventory_vector};
+    use known_nodes::KnownNodes;
+    use message::{Message,KnownNode,Object,GetPubKey};
+    use net::to_socket_addr;
+    use persist::Persister;
+    use std::sync::Mutex;
+    use std::sync::mpsc::SendError;
+    use time::{Timespec,get_time};
+    use super::MessageResponder;
+
+    struct Output {
+        pub messages: Mutex<Vec<Message>>
+    }
+
+    impl Output {
+        fn new() -> Output {
+            Output {
+                messages: Mutex::new(vec![])
+            }
+        }
+
+        fn add(&self, message: Message) -> Result<(), SendError<Message>> {
+            self.messages.lock().unwrap().push(message);
+            Ok(())
+        }
+
+        fn get_messages(&self) -> Vec<Message> {
+            self.messages.lock().unwrap().clone()
+        }
+    }
+
+    #[test]
+    fn test_get_version_send_verack() {
+        let input = Message::Version {
+            version: 3,
+            services: 1,
+            timestamp: get_time(),
+            addr_recv: to_socket_addr("127.0.0.1:8555"),
+            addr_from: to_socket_addr("127.0.0.1:8444"),
+            nonce: 0x0102030405060708,
+            user_agent: "test".to_string(),
+            streams: vec![ 1 ]
+        };
+        let output = run_test(input, Persister::new());
+        assert_eq!(1, output.len());
+
+        let message = &output[0];
+        match message {
+            &Message::Verack => {},
+            _ => panic!("Not a Verack message: {:?}", message)
+        }
+    }
+
+    #[test]
+    fn test_get_verack_empty_persister_send_empty_addr() {
+        let input = Message::Verack;
+        let output = run_test(input, Persister::new());
+        assert_eq!(1, output.len());
+
+        let message = &output[0];
+        match message {
+            &Message::Addr { ref addr_list } => { assert_eq!(0, addr_list.len()) },
+            _ => panic!("Not an Addr message: {:?}", message)
+        }
+    }
+
+    #[test]
+    fn test_get_verack_populated_persister_send_addr_and_inv() {
+        let mut persister = Persister::new();
+        let known_node = KnownNode {
+            last_seen: Timespec::new(5, 0),
+            stream: 1,
+            services: 1,
+            socket_addr: to_socket_addr("12.13.14.15:1000")
+        };
+        persister.add_known_node(&known_node);
+        let mut inventory = Inventory::new(persister.clone());
+        let persisted_message = Message::Object {
+            nonce: 1,
+            expiry: Timespec::new(2, 0),
+            version: 3,
+            stream: 1,
+            object: Object::GetPubKey(GetPubKey::V3 { ripe: vec![4; 20] })
+        };
+        inventory.add_object_message(&persisted_message);
+
+        let input = Message::Verack;
+        let output = run_test(input, persister);
+        assert_eq!(2, output.len());
+
+        let message1 = &output[0];
+        match message1 {
+            &Message::Addr { ref addr_list } => {
+                assert_eq!(1, addr_list.len());
+                let output_node = &addr_list[0];
+                assert_eq!(Timespec::new(5, 0), output_node.last_seen);
+                assert_eq!(1, output_node.stream);
+                assert_eq!(1, output_node.services);
+                assert_eq!(to_socket_addr("12.13.14.15:1000"), output_node.socket_addr);
+            },
+            _ => panic!("Not an Addr message: {:?}", message1)
+        }
+
+        let message2 = &output[1];
+        match message2 {
+            &Message::Inv { ref inventory } => {
+                assert_eq!(1, inventory.len());
+                let inventory_vector = &inventory[0];
+                assert_eq!(&calculate_inventory_vector(&persisted_message), inventory_vector);
+            },
+            _ => panic!("Not an Addr message: {:?}", message1)
+        }
+    }
+
+    #[test]
+    fn test_get_addr_populates_persister() {
+        let persister = Persister::new();
+        let known_node = KnownNode {
+            last_seen: Timespec::new(6, 0),
+            stream: 1,
+            services: 1,
+            socket_addr: to_socket_addr("22.33.44.55:6666")
+        };
+        let input = Message::Addr {
+            addr_list: vec![ known_node.clone() ]
+        };
+        let output = run_test(input, persister.clone());
+        assert_eq!(0, output.len());
+
+        let known_nodes = persister.get_known_nodes();
+        assert_eq!(1, known_nodes.len());
+
+        let known_node_recovered = &known_nodes[0];
+        assert_eq!(&known_node, known_node_recovered);
+    }
+
+    fn run_test(input: Message, persister: Persister) -> Vec<Message> {
+        let config = Config::new();
+        let known_nodes = KnownNodes::new(persister.clone());
+        let inventory = Inventory::new(persister.clone());
+        let peer_addr = to_socket_addr("127.0.0.1:8444");
+        let mut responder = MessageResponder::new(&config, &known_nodes, &inventory, peer_addr);
+
+        let output = Output::new();
+        responder.respond(input, |m| { output.add(m) } ).unwrap();
+
+        output.get_messages()
+    }
+}

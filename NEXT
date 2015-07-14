@@ -1,4 +1,5 @@
-The connection should be able to create all the messages it needs to
+Tests for MessageResponder
+Integrate POW
 More tests for read / write -- all the object types / version
 read.rs TODO - check all payload read
 Clean up ParseError enum

@@ -42,7 +42,7 @@ impl Inventory {
     }
 }
 
-fn calculate_inventory_vector(object_message: &Message) -> InventoryVector {
+pub fn calculate_inventory_vector(object_message: &Message) -> InventoryVector {
     let mut message_bytes: Vec<u8> = vec![];
     write_message(&mut message_bytes, object_message);
 
