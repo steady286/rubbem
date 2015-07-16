@@ -117,7 +117,7 @@ mod tests {
     use config::Config;
     use inventory::{Inventory,calculate_inventory_vector};
     use known_nodes::KnownNodes;
-    use message::{Message,KnownNode,Object,GetPubKey};
+    use message::{InventoryVector,KnownNode,Message,Object,GetPubKey};
     use net::to_socket_addr;
     use persist::Persister;
     use std::sync::Mutex;
@@ -192,13 +192,7 @@ mod tests {
         };
         persister.add_known_node(&known_node);
         let mut inventory = Inventory::new(persister.clone());
-        let persisted_message = Message::Object {
-            nonce: 1,
-            expiry: Timespec::new(2, 0),
-            version: 3,
-            stream: 1,
-            object: Object::GetPubKey(GetPubKey::V3 { ripe: vec![4; 20] })
-        };
+        let persisted_message = create_object_message();
         inventory.add_object_message(&persisted_message);
 
         let input = Message::Verack;
@@ -249,6 +243,65 @@ mod tests {
 
         let known_node_recovered = &known_nodes[0];
         assert_eq!(&known_node, known_node_recovered);
+    }
+
+    #[test]
+    fn test_get_inv_empty_persister_send_getdata_for_all() {
+        let inventory_vector1 = InventoryVector { hash: vec![1; 20] };
+        let inventory_vector2 = InventoryVector { hash: vec![2; 20] };
+        let input = Message::Inv {
+            inventory: vec![
+                inventory_vector1.clone(),
+                inventory_vector2.clone()
+            ]
+        };
+        let output = run_test(input, Persister::new());
+        assert_eq!(1, output.len());
+
+        let message = &output[0];
+        match message {
+            &Message::GetData { ref inventory } => {
+                assert_eq!(2, inventory.len());
+                assert_eq!(&inventory[0], &inventory_vector1);
+                assert_eq!(&inventory[1], &inventory_vector2);
+            },
+            _ => panic!("Not an Inv message: {:?}", message)
+        }
+    }
+
+    #[test]
+    fn test_get_inv_only_getdata_for_vectors_not_in_persister() {
+        let inventory_vector1 = InventoryVector { hash: vec![1; 20] };
+        let inventory_vector2 = InventoryVector { hash: vec![2; 20] };
+        let input = Message::Inv {
+            inventory: vec![
+                inventory_vector1.clone(),
+                inventory_vector2.clone()
+            ]
+        };
+        let mut persister = Persister::new();
+        persister.add_object_message(&inventory_vector1, &create_object_message());
+        let output = run_test(input, persister);
+        assert_eq!(1, output.len());
+
+        let message = &output[0];
+        match message {
+            &Message::GetData { ref inventory } => {
+                assert_eq!(1, inventory.len());
+                assert_eq!(&inventory[0], &inventory_vector2);
+            },
+            _ => panic!("Not an Inv message: {:?}", message)
+        }
+    }
+
+    fn create_object_message() -> Message {
+        Message::Object {
+            nonce: 1,
+            expiry: Timespec::new(2, 0),
+            version: 3,
+            stream: 1,
+            object: Object::GetPubKey(GetPubKey::V3 { ripe: vec![4; 20] })
+        }
     }
 
     fn run_test(input: Message, persister: Persister) -> Vec<Message> {
