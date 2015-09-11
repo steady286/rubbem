@@ -1,12 +1,13 @@
 Tests for MessageResponder
+MessageResponder TODOs - version checks
 Integrate POW
+Filter messages that do not have an adequate POW
 More tests for read / write -- all the object types / version
-read.rs TODO - check all payload read
+read.rs TODO - check all payload has been read
 Clean up ParseError enum
 Communicate messages from the connection to the wider bm_client
  - what does the wider bm_client do with them?
  API for BMClient? Create addresses, send messages (sync vs async?), event for message receipt
-Filter messages that do not have an adequate POW
 Test encrypted messages for decryptability
 Cope better with failing to connect to enough peers in peer.rs loop
 
