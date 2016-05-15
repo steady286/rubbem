@@ -1,9 +1,9 @@
 use byteorder::{BigEndian,WriteBytesExt};
-use crypto::sha512_checksum;
+use checksum::sha512_checksum;
 use encoding::{Encoding,EncoderTrap};
 use encoding::all::ASCII;
 use std::net::SocketAddr;
-use time::Timespec;
+use std::time::{SystemTime,UNIX_EPOCH};
 
 use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message};
 use super::{MAGIC,MAX_PAYLOAD_LENGTH,MAX_NODES_COUNT,MAX_GETDATA_COUNT,MAX_INV_COUNT};
@@ -99,7 +99,7 @@ fn write_addr_message(output: &mut Vec<u8>, addr_list: &[KnownNode]) {
 }
 
 fn write_known_node(output: &mut Vec<u8>, known_node: &KnownNode) {
-    write_i64(output, known_node.last_seen.sec);
+    write_i64(output, get_secs_from_time(&known_node.last_seen));
     write_u32(output, known_node.stream);
     write_u64(output, known_node.services);
     write_address_and_port(output, &known_node.socket_addr);
@@ -128,10 +128,10 @@ fn write_inventory_vector(output: &mut Vec<u8>, inventory_vector: &InventoryVect
     write_bytes(output, &inventory_vector.hash, 32);
 }
 
-fn write_version_message(output: &mut Vec<u8>, version: u32, services: u64, timestamp: &Timespec, addr_recv: &SocketAddr, addr_from: &SocketAddr, nonce: u64, user_agent: &str, streams: &[u64]) {
+fn write_version_message(output: &mut Vec<u8>, version: u32, services: u64, timestamp: &SystemTime, addr_recv: &SocketAddr, addr_from: &SocketAddr, nonce: u64, user_agent: &str, streams: &[u64]) {
     write_u32(output, version);
     write_u64(output, services);
-    write_i64(output, timestamp.sec);
+    write_i64(output, get_secs_from_time(timestamp));
     write_u64(output, services);
     write_address_and_port(output, addr_recv);
     write_u64(output, services);
@@ -144,9 +144,9 @@ fn write_version_message(output: &mut Vec<u8>, version: u32, services: u64, time
 fn write_verack_message(_: &mut Vec<u8>) {
 }
 
-fn write_object_message(output: &mut Vec<u8>, nonce: u64, expiry: &Timespec, version: u64, stream: u32, object: &Object) {
+fn write_object_message(output: &mut Vec<u8>, nonce: u64, expiry: &SystemTime, version: u64, stream: u32, object: &Object) {
     write_u64(output, nonce);
-    write_i64(output, expiry.sec);
+    write_i64(output, get_secs_from_time(expiry));
     write_object_type(output, object);
     write_var_int_64(output, version);
     write_var_int_32(output, stream);
@@ -346,6 +346,13 @@ fn write_u32(output: &mut Vec<u8>, value: u32) {
 
 fn write_u16(output: &mut Vec<u8>, value: u16) {
     output.write_u16::<BigEndian>(value).unwrap();
+}
+
+fn get_secs_from_time(time: &SystemTime) -> i64 {
+    match time.duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_secs() as i64,
+        Err(time_error) => -(time_error.duration().as_secs() as i64)
+    }
 }
 
 // fn write_u8(output: &mut Vec<u8>, value: u8) {

@@ -1,11 +1,11 @@
 use byteorder::BigEndian;
 use byteorder::ReadBytesExt;
-use crypto::sha512_checksum;
+use checksum::sha512_checksum;
 use encoding::{DecoderTrap,Encoding};
 use encoding::all::ASCII;
 use std::io::{Cursor,Read};
 use std::net::{Ipv6Addr,SocketAddr,SocketAddrV4,SocketAddrV6};
-use time::Timespec;
+use std::time::{Duration,SystemTime,UNIX_EPOCH};
 
 use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message};
 use super::{MAGIC,MAX_GETDATA_COUNT,MAX_INV_COUNT,MAX_NODES_COUNT,MAX_PAYLOAD_LENGTH};
@@ -363,9 +363,17 @@ fn read_address_and_port<A: Read>(source: &mut A) -> Result<SocketAddr,ParseErro
     Ok(socket_addr)
 }
 
-fn read_timestamp<A: Read>(source: &mut A) -> Result<Timespec,ParseError> {
+fn read_timestamp<A: Read>(source: &mut A) -> Result<SystemTime,ParseError> {
     let secs = try!(read_i64(source));
-    Ok(Timespec::new(secs, 0))
+    Ok(get_time_from_secs(secs))
+}
+
+fn get_time_from_secs(secs: i64) -> SystemTime {
+    match secs.signum() {
+        1 => UNIX_EPOCH + Duration::from_secs(secs as u64),
+        -1 => UNIX_EPOCH - Duration::from_secs(-secs as u64),
+        _ => UNIX_EPOCH
+    }
 }
 
 fn read_var_int_bytes<A: Read>(source: &mut A) -> Result<Vec<u8>,ParseError> {
@@ -457,6 +465,7 @@ fn read_u8<A: Read>(source: &mut A) -> Result<u8,ParseError> {
 mod tests {
     use std::io::Cursor;
     use std::net::SocketAddr;
+    use std::time::UNIX_EPOCH;
     use super::read_address_and_port;
     use super::read_timestamp;
     use super::read_var_int_bytes;
@@ -501,7 +510,7 @@ mod tests {
         let bytes: Vec<u8> = vec![ 8, 7, 6, 5, 4, 3, 2, 1 ];
         let mut source = Cursor::new(bytes);
 
-        let sec = read_timestamp(&mut source).unwrap().sec;
+        let sec = read_timestamp(&mut source).unwrap().duration_since(UNIX_EPOCH).unwrap().as_secs();
         assert_eq!(0x0807060504030201, sec);
     }
 

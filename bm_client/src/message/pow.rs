@@ -1,9 +1,9 @@
 use byteorder::{BigEndian,ReadBytesExt,WriteBytesExt};
-use crypto::{Sha512Digest,sha512};
+use checksum::sha512_hash;
 use message::{MAX_PAYLOAD_LENGTH_FOR_OBJECT};
 use std::cmp::max;
 use std::io::Cursor;
-use time::Timespec;
+use std::time::SystemTime;
 use timegen::TimeGenerator;
 
 #[derive(Debug,PartialEq)]
@@ -44,10 +44,13 @@ impl<T: TimeGenerator> ProofOfWorkConfig<T> {
         self.extra_bytes
     }
 
-    pub fn ttl(&self, expiry: Timespec) -> Result<u32,TimeToLiveError> {
-        let now: Timespec = self.time_fn.get_time();
-        let remaining_lifetime = expiry - now;
-        let ttl = remaining_lifetime.num_seconds();
+    pub fn ttl(&self, expiry: SystemTime) -> Result<u32,TimeToLiveError> {
+        let now: SystemTime = self.time_fn.get_time();
+
+        let ttl = match expiry.duration_since(now) {
+            Ok(duration) => duration.as_secs(),
+            Err(time_error) => -(time_error.duration().as_secs())
+        }
 
         if ttl < self.minimum_ttl {
             return Err(TimeToLiveError::ObjectAlreadyDied);
@@ -81,7 +84,7 @@ fn to_generate_error(e: TimeToLiveError) -> GenerateError {
     }
 }
 
-pub fn generate_proof<T: TimeGenerator>(payload: &[u8], expiry: Timespec, config: ProofOfWorkConfig<T>) -> Result<u64,GenerateError> {
+pub fn generate_proof<T: TimeGenerator>(payload: &[u8], expiry: SystemTime, config: ProofOfWorkConfig<T>) -> Result<u64,GenerateError> {
     assert!((8 + payload.len()) <= u32::max_value() as usize);
 
     let full_payload_length = 8u32 + payload.len() as u32;
@@ -103,10 +106,10 @@ fn to_verify_error(e: TimeToLiveError) -> VerifyError {
     }
 }
 
-pub fn verify_proof<T: TimeGenerator>(nonce: u64, payload: &[u8], expiry: Timespec, config: ProofOfWorkConfig<T>) -> Result<(),VerifyError> {
+pub fn verify_proof<T: TimeGenerator>(nonce: u64, payload: &[u8], expiry: SystemTime, config: ProofOfWorkConfig<T>) -> Result<(),VerifyError> {
     let target = try!(target(payload.len() as u32, expiry, config).map_err(to_verify_error));
 
-    let Sha512Digest(initial_hash) = sha512(payload);
+    let initial_hash = sha512_hash(payload);
     assert!(initial_hash.len() == 64);
 
     let mut input_cursor = Cursor::new(Vec::<u8>::with_capacity(72));
@@ -123,7 +126,7 @@ pub fn verify_proof<T: TimeGenerator>(nonce: u64, payload: &[u8], expiry: Timesp
 }
 
 fn generate_pow_given_target(payload: &[u8], target: u64) -> Result<u64,GenerateError> {
-    let Sha512Digest(initial_hash) = sha512(payload);
+    let initial_hash = sha512_hash(payload);
     assert!(initial_hash.len() == 64);
 
     let mut input = [0u8; 72];
@@ -152,14 +155,14 @@ fn generate_pow_given_target(payload: &[u8], target: u64) -> Result<u64,Generate
 }
 
 fn first_8_of_double_digest(input: &[u8]) -> u64 {
-    let Sha512Digest(first_round) = sha512(input);
-    let Sha512Digest(second_round) = sha512(&first_round[..]);
+    let first_round = sha512_hash(input);
+    let second_round = sha512_hash(&first_round[..]);
 
     let mut output_cursor = Cursor::new(&second_round[0..8]);
     output_cursor.read_u64::<BigEndian>().unwrap()
 }
 
-fn target<T: TimeGenerator>(payload_length: u32, expiry: Timespec, config: ProofOfWorkConfig<T>) -> Result<u64,TimeToLiveError> {
+fn target<T: TimeGenerator>(payload_length: u32, expiry: SystemTime, config: ProofOfWorkConfig<T>) -> Result<u64,TimeToLiveError> {
     assert!(payload_length > 0);
     assert!(payload_length <= MAX_PAYLOAD_LENGTH_FOR_OBJECT);
     let ttl = try!(config.ttl(expiry));

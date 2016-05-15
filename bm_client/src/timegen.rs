@@ -1,7 +1,7 @@
-use time::{Timespec,get_time};
+use std::time::SystemTime;
 
 pub trait TimeGenerator : Copy {
-    fn get_time(&self) -> Timespec;
+    fn get_time(&self) -> SystemTime;
 }
 
 #[derive(Clone,Copy,Debug,PartialEq)]
@@ -14,20 +14,20 @@ impl StandardTimeGenerator {
 }
 
 impl TimeGenerator for StandardTimeGenerator {
-    fn get_time(&self) -> Timespec {
-        get_time()
+    fn get_time(&self) -> SystemTime {
+        SystemTime::now()
     }
 }
 
 #[cfg(test)]
 #[derive(Clone,Copy,Debug,PartialEq)]
 pub struct StaticTimeGenerator {
-    time: Timespec
+    time: SystemTime
 }
 
 #[cfg(test)]
 impl StaticTimeGenerator {
-    pub fn new(time: Timespec) -> StaticTimeGenerator {
+    pub fn new(time: SystemTime) -> StaticTimeGenerator {
         StaticTimeGenerator {
             time: time
         }
@@ -36,7 +36,7 @@ impl StaticTimeGenerator {
 
 #[cfg(test)]
 impl TimeGenerator for StaticTimeGenerator {
-    fn get_time(&self) -> Timespec {
+    fn get_time(&self) -> SystemTime {
         self.time
     }
 }

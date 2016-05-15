@@ -1,29 +1,38 @@
-pub use sodiumoxide::crypto::hash::sha512::hash as sha512;
-pub use sodiumoxide::crypto::hash::sha512::Digest as Sha512Digest;
-
 use byteorder::{BigEndian,ReadBytesExt};
+use crypto::digest::Digest;
+use crypto::sha2::Sha512;
 use std::io::Cursor;
 
+pub fn sha512_hash(input: &[u8]) -> [u8; 64] {
+    let mut hasher = Sha512::new();
+
+    hasher.input(input);
+
+    let mut result: [u8; 64] = [0; 64];
+    hasher.result(&mut result[..]);
+
+    result
+}
+
 pub fn sha512_checksum(input: &[u8]) -> u32 {
-    let Sha512Digest(digest) = sha512(input);
+    let hash = sha512_hash(input);
 
-    assert!(digest.len() >= 4);
+    assert!(hash.len() >= 4);
 
-    let mut cursor = Cursor::new(&digest[0..4]);
+    let mut cursor = Cursor::new(&hash[0..4]);
     cursor.read_u32::<BigEndian>().unwrap()
 }
 
 #[cfg(test)]
 mod tests {
-    use super::Sha512Digest;
-    use super::sha512;
     use super::sha512_checksum;
+    use super::sha512_hash;
 
     #[test]
-    fn test_sha512() {
+    fn test_sha512_hash() {
         let input: Vec<u8> = vec![ 104, 101, 108, 108, 111 ]; // hello
-        let Sha512Digest(output1) = sha512(&input[..]);
-        let Sha512Digest(output2) = sha512(&output1[..]);
+        let output1 = sha512_hash(&input[..]);
+        let output2 = sha512_hash(&output1[..]);
 
         let expected1 = [
                         0x9b, 0x71, 0xd2, 0x24, 0xbd, 0x62, 0xf3, 0x78,

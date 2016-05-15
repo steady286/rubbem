@@ -1,4 +1,4 @@
-use crypto::{Sha512Digest,sha512};
+use checksum::sha512_hash;
 use message::{InventoryVector,Message,write_message};
 use persist::{InventoryIterator,Persister};
 
@@ -46,8 +46,8 @@ pub fn calculate_inventory_vector(object_message: &Message) -> InventoryVector {
     let mut message_bytes: Vec<u8> = vec![];
     write_message(&mut message_bytes, object_message);
 
-    let Sha512Digest(round1) = sha512(&message_bytes);
-    let Sha512Digest(round2) = sha512(&round1);
+    let round1 = sha512_hash(&message_bytes);
+    let round2 = sha512_hash(&round1);
     let hash = &round2[0..32];
 
     InventoryVector {

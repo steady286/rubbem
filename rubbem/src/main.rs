@@ -1,7 +1,8 @@
 extern crate gtk;
 extern crate bm_client;
 
-use gtk::traits::*;
+//use gtk::traits::*;
+use gtk::prelude::*;
 use bm_client::BMClient;
 
 fn main() {
@@ -16,20 +17,14 @@ fn main() {
 
 fn gtk_main()
 {
-    match gtk::Window::new(gtk::WindowType::TopLevel) {
-        None => println!("Unable to create a GTK window."),
-        Some(window) => gtk_window(window)
-    }
-}
+    let window = gtk::Window::new(gtk::WindowType::Toplevel);
 
-fn gtk_window(window: gtk::Window)
-{
     window.set_title("Rubbem");
-    window.set_window_position(gtk::WindowPosition::Center);
+    window.set_position(gtk::WindowPosition::Center);
 
     window.connect_delete_event(|_, _| {
         gtk::main_quit();
-        gtk::signal::Inhibit(false)
+        gtk::Inhibit(false)
     });
 
     window.show_all();

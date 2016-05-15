@@ -4,7 +4,8 @@ use inventory::Inventory;
 use known_nodes::KnownNodes;
 use message::MessageResponder;
 use std::net::SocketAddr;
-use std::thread::{Builder,sleep_ms};
+use std::time::{Duration};
+use std::thread::{Builder,sleep};
 
 pub struct PeerConnector {
     config: Config,
@@ -49,7 +50,7 @@ impl PeerConnector
                     let connection = Connection::new(message_responder, peer_addr);
                     connections.push(connection);
                 }
-                sleep_ms(100);
+                sleep(Duration::from_millis(100));
             }
         }).unwrap();
     }

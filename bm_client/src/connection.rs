@@ -4,17 +4,17 @@ use std::io::{Error,Write};
 use std::net::{Shutdown,SocketAddr,TcpStream};
 use std::sync::{Arc,RwLock};
 use std::sync::mpsc::{Receiver,SyncSender,TryRecvError,sync_channel};
-use std::thread::{Builder,JoinHandle,sleep_ms};
-use time::{Duration,Timespec,get_time};
+use std::time::{Duration,Instant};
+use std::thread::{Builder,JoinHandle,sleep};
 
 const MAX_WRITE_BUFFER: usize = 20_000_000;
 
 #[derive(Debug,Clone,Copy,PartialEq)]
 pub enum ConnectionState {
-    Fresh(Timespec),
-    GotVerackAwaitingVersion(Timespec),
-    GotVersionAwaitingVerack(Timespec),
-    Established(Timespec),
+    Fresh(Instant),
+    GotVerackAwaitingVersion(Instant),
+    GotVersionAwaitingVerack(Instant),
+    Established(Instant),
     Stale,
     Error
 }
@@ -76,7 +76,7 @@ impl Drop for Connection {
 
 fn new_from_stream(message_responder: MessageResponder, tcp_stream: TcpStream) -> Connection {
     let socket_addr = tcp_stream.peer_addr().unwrap();
-    let state = StateHolder::new(ConnectionState::Fresh(get_time()));
+    let state = StateHolder::new(ConnectionState::Fresh(Instant::now()));
 
     // Make channels for thread communication
     let (read_state_tx, read_state_rx) = sync_channel(0);
@@ -141,14 +141,14 @@ fn create_state_thread(name: String, state_holder: StateHolder, read_chan: Recei
                 (_, Err(TryRecvError::Empty)) => (current_state, vec![]),
                 (_, Err(TryRecvError::Disconnected)) => (ConnectionState::Error, vec![]),
                 (_, Ok(Err(_))) => (ConnectionState::Error, vec![]),
-                (ConnectionState::Fresh(_), Ok(Ok(m @ Message::Version {..}))) => (ConnectionState::GotVersionAwaitingVerack(get_time()), vec![ m ]),
-                (ConnectionState::Fresh(_), Ok(Ok(Message::Verack))) => (ConnectionState::GotVerackAwaitingVersion(get_time()), vec![]),
+                (ConnectionState::Fresh(_), Ok(Ok(m @ Message::Version {..}))) => (ConnectionState::GotVersionAwaitingVerack(Instant::now()), vec![ m ]),
+                (ConnectionState::Fresh(_), Ok(Ok(Message::Verack))) => (ConnectionState::GotVerackAwaitingVersion(Instant::now()), vec![]),
                 (ConnectionState::Fresh(_), Ok(Ok(_))) => (ConnectionState::Error, vec![]),
-                (ConnectionState::GotVersionAwaitingVerack(_), Ok(Ok(m @ Message::Verack))) => (ConnectionState::Established(get_time()), vec![ m ]),
+                (ConnectionState::GotVersionAwaitingVerack(_), Ok(Ok(m @ Message::Verack))) => (ConnectionState::Established(Instant::now()), vec![ m ]),
                 (ConnectionState::GotVersionAwaitingVerack(_), Ok(Ok(_))) => (ConnectionState::Error, vec![]),
-                (ConnectionState::GotVerackAwaitingVersion(_), Ok(Ok(m @ Message::Version{..}))) => (ConnectionState::Established(get_time()), vec![ m ]),
+                (ConnectionState::GotVerackAwaitingVersion(_), Ok(Ok(m @ Message::Version{..}))) => (ConnectionState::Established(Instant::now()), vec![ m ]),
                 (ConnectionState::GotVerackAwaitingVersion(_), Ok(Ok(_))) => (ConnectionState::Error, vec![]),
-                (ConnectionState::Established(_), Ok(Ok(m))) => (ConnectionState::Established(get_time()), vec![ m ]),
+                (ConnectionState::Established(_), Ok(Ok(m))) => (ConnectionState::Established(Instant::now()), vec![ m ]),
                 (_, Ok(Ok(_))) => (current_state, vec![])
             };
 
@@ -158,10 +158,10 @@ fn create_state_thread(name: String, state_holder: StateHolder, read_chan: Recei
             }
 
             match new_state {
-                ConnectionState::Fresh(time) => check_staleness(&state_holder, time, Duration::seconds(20)),
-                ConnectionState::GotVersionAwaitingVerack(time) => check_staleness(&state_holder, time, Duration::seconds(20)),
-                ConnectionState::GotVerackAwaitingVersion(time) => check_staleness(&state_holder, time, Duration::seconds(20)),
-                ConnectionState::Established(time) => check_staleness(&state_holder, time, Duration::minutes(10)),
+                ConnectionState::Fresh(time) => check_staleness(&state_holder, time, Duration::from_secs(20)),
+                ConnectionState::GotVersionAwaitingVerack(time) => check_staleness(&state_holder, time, Duration::from_secs(20)),
+                ConnectionState::GotVerackAwaitingVersion(time) => check_staleness(&state_holder, time, Duration::from_secs(20)),
+                ConnectionState::Established(time) => check_staleness(&state_holder, time, Duration::from_secs(10 * 60)),
                 _ => {}
             }
 
@@ -171,13 +171,13 @@ fn create_state_thread(name: String, state_holder: StateHolder, read_chan: Recei
                 _ => {}
             }
 
-            sleep_ms(100);
+            sleep(Duration::from_millis(100));
         }
     })
 }
 
-fn check_staleness(state_holder: &StateHolder, time: Timespec, duration: Duration) {
-    let now = get_time();
+fn check_staleness(state_holder: &StateHolder, time: Instant, duration: Duration) {
+    let now = Instant::now();
     if now > time + duration {
         state_holder.set_state(ConnectionState::Stale);
     }

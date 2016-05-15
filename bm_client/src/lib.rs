@@ -1,16 +1,16 @@
 extern crate byteorder;
+extern crate crypto;
 extern crate encoding;
 extern crate rand;
-extern crate sodiumoxide;
-extern crate time;
+//extern crate sodiumoxide;
 
 mod macros;
 
 mod channel;
+mod checksum;
 mod chunk;
 mod config;
 mod connection;
-mod crypto;
 mod inventory;
 mod known_nodes;
 mod message;
@@ -26,7 +26,7 @@ use message::KnownNode;
 use net::to_socket_addr;
 use peer::PeerConnector;
 use persist::Persister;
-use time::get_time;
+use std::time::SystemTime;
 
 pub enum BMError {
     NoDiskAccess,
@@ -74,7 +74,7 @@ fn bootstrap_nodes() -> Vec<KnownNode> {
     vec![
         // "5.45.99.75:8444"
         KnownNode {
-            last_seen: get_time(),
+            last_seen: SystemTime::now(),
             stream: 1,
             services: 1,
             socket_addr: to_socket_addr("127.0.0.1:8444")

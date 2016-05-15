@@ -11,7 +11,7 @@ pub use self::write::write_message;
 use channel::MemorySize;
 use std::mem;
 use std::net::SocketAddr;
-use time::Timespec;
+use std::time::SystemTime;
 
 const MAGIC: u32 = 0xe9beb4d9;
 const MAX_PAYLOAD_LENGTH: u32 = 1600003;
@@ -29,7 +29,7 @@ pub struct InventoryVector {
 
 #[derive(Clone,Debug,PartialEq)]
 pub struct KnownNode {
-    pub last_seen: Timespec,
+    pub last_seen: SystemTime,
     pub stream: u32,
     pub services: u64,
     pub socket_addr: SocketAddr
@@ -99,7 +99,7 @@ pub enum Message {
     Version {
         version: u32,
         services: u64,
-        timestamp: Timespec,
+        timestamp: SystemTime,
         addr_recv: SocketAddr,
         addr_from: SocketAddr,
         nonce: u64,
@@ -109,7 +109,7 @@ pub enum Message {
     Verack,
     Object {
         nonce: u64,
-        expiry: Timespec,
+        expiry: SystemTime,
         version: u64,
         stream: u32,
         object: Object
@@ -136,7 +136,7 @@ mod tests {
     use net::to_socket_addr;
     use rand::{Rng,SeedableRng,XorShiftRng};
     use std::io::Cursor;
-    use time::Timespec;
+    use std::time::{Duration,UNIX_EPOCH};
     use super::{InventoryVector,KnownNode,Message,Object,GetPubKey};
     use super::{read_message,write_message};
 
@@ -145,13 +145,13 @@ mod tests {
         let message = Message::Addr {
             addr_list: vec![
                 KnownNode {
-                    last_seen: Timespec::new(0x908070605, 0),
+                    last_seen: UNIX_EPOCH + Duration::from_secs(0x908070605),
                     stream: 2,
                     services: 3,
                     socket_addr: to_socket_addr("12.13.14.15:1617")
                 },
                 KnownNode {
-                    last_seen: Timespec::new(0x1918171615, 0),
+                    last_seen: UNIX_EPOCH + Duration::from_secs(0x1918171615),
                     stream: 4,
                     services: 5,
                     socket_addr: to_socket_addr("22.23.24.25:2627")
@@ -248,7 +248,7 @@ mod tests {
         let message = Message::Version {
             version: 3,
             services: 1,
-            timestamp: Timespec::new(0x504030201, 0),
+            timestamp: UNIX_EPOCH + Duration::from_secs(0x504030201),
             addr_recv: to_socket_addr("127.0.0.1:8444"),
             addr_from: to_socket_addr("11.22.33.44:8555"),
             nonce: 0x12345678,
@@ -301,7 +301,7 @@ mod tests {
 
         let message = Message::Object {
             nonce: 0xf29f6e8b9acd981d,
-            expiry: Timespec::new(0x010203040506, 0),
+            expiry: UNIX_EPOCH + Duration::from_secs(0x010203040506),
             version: 4, // GetPubKey verion
             stream: 2,
             object: Object::GetPubKey(

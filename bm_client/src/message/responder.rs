@@ -6,7 +6,7 @@ use message::{InventoryVector,Message};
 use net::to_socket_addr;
 use std::sync::mpsc::SendError;
 use std::net::{Ipv4Addr,SocketAddr,SocketAddrV4};
-use time::{get_time};
+use std::time::SystemTime;
 
 use super::{MAX_INV_COUNT,MAX_NODES_COUNT};
 
@@ -83,7 +83,7 @@ impl MessageResponder {
         Message::Version {
             version: 3,
             services: 1,
-            timestamp: get_time(),
+            timestamp: SystemTime::now(),
             addr_recv: self.peer_addr,
             addr_from: our_addr,
             nonce: nonce,
@@ -122,7 +122,7 @@ mod tests {
     use persist::Persister;
     use std::sync::Mutex;
     use std::sync::mpsc::SendError;
-    use time::{Timespec,get_time};
+    use std::time::{Duration,SystemTime,UNIX_EPOCH};
     use super::MessageResponder;
 
     struct Output {
@@ -151,7 +151,7 @@ mod tests {
         let input = Message::Version {
             version: 3,
             services: 1,
-            timestamp: get_time(),
+            timestamp: SystemTime::now(),
             addr_recv: to_socket_addr("127.0.0.1:8555"),
             addr_from: to_socket_addr("127.0.0.1:8444"),
             nonce: 0x0102030405060708,
@@ -185,7 +185,7 @@ mod tests {
     fn test_get_verack_populated_persister_send_addr_and_inv() {
         let mut persister = Persister::new();
         let known_node = KnownNode {
-            last_seen: Timespec::new(5, 0),
+            last_seen: UNIX_EPOCH + Duration::from_secs(5),
             stream: 1,
             services: 1,
             socket_addr: to_socket_addr("12.13.14.15:1000")
@@ -204,7 +204,7 @@ mod tests {
             &Message::Addr { ref addr_list } => {
                 assert_eq!(1, addr_list.len());
                 let output_node = &addr_list[0];
-                assert_eq!(Timespec::new(5, 0), output_node.last_seen);
+                assert_eq!(UNIX_EPOCH + Duration::from_secs(5), output_node.last_seen);
                 assert_eq!(1, output_node.stream);
                 assert_eq!(1, output_node.services);
                 assert_eq!(to_socket_addr("12.13.14.15:1000"), output_node.socket_addr);
@@ -227,7 +227,7 @@ mod tests {
     fn test_get_addr_populates_persister() {
         let persister = Persister::new();
         let known_node = KnownNode {
-            last_seen: Timespec::new(6, 0),
+            last_seen: UNIX_EPOCH + Duration::from_secs(6),
             stream: 1,
             services: 1,
             socket_addr: to_socket_addr("22.33.44.55:6666")
@@ -297,7 +297,7 @@ mod tests {
     fn create_object_message() -> Message {
         Message::Object {
             nonce: 1,
-            expiry: Timespec::new(2, 0),
+            expiry: UNIX_EPOCH + Duration::from_secs(2),
             version: 3,
             stream: 1,
             object: Object::GetPubKey(GetPubKey::V3 { ripe: vec![4; 20] })

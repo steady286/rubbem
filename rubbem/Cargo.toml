@@ -6,7 +6,7 @@ authors = ["Chris Greenaway"]
 [dependencies.bm_client]
 path = "../bm_client"
 
-[dependencies.gtk]
-git = "https://github.com/rust-gnome/gtk.git"
-features = ["gtk_3_6"]
-
+[dependencies]
+gtk = "0.0.7"
+#git = "https://github.com/gtk-rs/gtk"
+#features = ["gtk_3_6"]
