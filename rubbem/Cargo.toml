@@ -8,5 +8,3 @@ path = "../bm_client"
 
 [dependencies]
 gtk = "0.0.7"
-#git = "https://github.com/gtk-rs/gtk"
-#features = ["gtk_3_6"]

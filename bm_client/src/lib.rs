@@ -2,7 +2,6 @@ extern crate byteorder;
 extern crate crypto;
 extern crate encoding;
 extern crate rand;
-//extern crate sodiumoxide;
 
 mod macros;
 

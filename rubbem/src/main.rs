@@ -1,7 +1,6 @@
 extern crate gtk;
 extern crate bm_client;
 
-//use gtk::traits::*;
 use gtk::prelude::*;
 use bm_client::BMClient;
 
