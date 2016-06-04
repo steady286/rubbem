@@ -321,6 +321,22 @@ mod tests {
         check_object_message(&output[1], 4);
     }
 
+    #[test]
+    fn test_get_object_saves_object() {
+        let persister = Persister::new();
+        let input = create_object_message(1);
+        let output = run_test(input.clone(), persister.clone());
+        assert_eq!(0, output.len());
+
+        let inventory_vector = calculate_inventory_vector(&input);
+        let object_message = persister.get_object_message(&inventory_vector);
+
+        match object_message {
+            Some(m) => check_object_message(&m, 1),
+            None => panic!("Object was not stored")
+        }
+    }
+
     fn create_object_message(nonce: u64) -> Message {
         Message::Object {
             nonce: nonce,

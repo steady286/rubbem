@@ -1,4 +1,4 @@
-Tests for MessageResponder - object messages
+What if we receive the same object or addr message more than once?
 MessageResponder TODOs - version checks
 Sending addr and object messages on to peers?
 Integrate POW
