@@ -192,7 +192,7 @@ mod tests {
         };
         persister.add_known_node(&known_node);
         let mut inventory = Inventory::new(persister.clone());
-        let persisted_message = create_object_message();
+        let persisted_message = create_object_message(1);
         inventory.add_object_message(&persisted_message);
 
         let input = Message::Verack;
@@ -280,7 +280,7 @@ mod tests {
             ]
         };
         let mut persister = Persister::new();
-        persister.add_object_message(&inventory_vector1, &create_object_message());
+        persister.add_object_message(&inventory_vector1, &create_object_message(1));
         let output = run_test(input, persister);
         assert_eq!(1, output.len());
 
@@ -294,13 +294,49 @@ mod tests {
         }
     }
 
-    fn create_object_message() -> Message {
+    #[test]
+    fn test_get_getdata_send_objects() {
+        let inventory_vector1 = InventoryVector { hash: vec![1; 20] };
+        let inventory_vector2 = InventoryVector { hash: vec![2; 20] };
+        let inventory_vector3 = InventoryVector { hash: vec![3; 20] };
+        let inventory_vector4 = InventoryVector { hash: vec![4; 20] };
+
+        let mut persister = Persister::new();
+        persister.add_object_message(&inventory_vector1, &create_object_message(1));
+        persister.add_object_message(&inventory_vector2, &create_object_message(2));
+        persister.add_object_message(&inventory_vector4, &create_object_message(4));
+
+        let input = Message::GetData {
+            inventory: vec![
+                inventory_vector1.clone(),
+                inventory_vector3.clone(),
+                inventory_vector4.clone()
+            ]
+        };
+
+        let output = run_test(input, persister);
+
+        assert_eq!(2, output.len());
+        check_object_message(&output[0], 1);
+        check_object_message(&output[1], 4);
+    }
+
+    fn create_object_message(nonce: u64) -> Message {
         Message::Object {
-            nonce: 1,
+            nonce: nonce,
             expiry: UNIX_EPOCH + Duration::from_secs(2),
             version: 3,
             stream: 1,
             object: Object::GetPubKey(GetPubKey::V3 { ripe: vec![4; 20] })
+        }
+    }
+
+    fn check_object_message(message: &Message, expected_nonce: u64) {
+        match message {
+            &Message::Object { nonce, .. } => {
+                assert_eq!(expected_nonce, nonce);
+            },
+            _ => panic!("Not an Object message: {:?}", message)
         }
     }
 
