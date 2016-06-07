@@ -1,8 +1,9 @@
-What if we receive the same object or addr message more than once?
-MessageResponder TODOs - version checks
+What if we receive the same object or addr message more than once? Tests - causes a problem for KnownNode
+What if we receive a duplicate message (e.g. get a Version message when the connection is already Established)
 Sending addr and object messages on to peers?
 Integrate POW
 Filter messages that do not have an adequate POW
+MessageResponder - get_streams_of_interest - more than stream 1.
 More tests for read / write -- all the object types / version
 read.rs TODO - check all payload has been read
 Clean up ParseError enum

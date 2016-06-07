@@ -1,4 +1,3 @@
-//mod pow;
 mod read;
 mod responder;
 mod write;
@@ -86,6 +85,27 @@ pub enum Object {
 }
 
 #[derive(Clone,Debug,PartialEq)]
+pub struct VersionData {
+    version: u32,
+    services: u64,
+    timestamp: SystemTime,
+    addr_recv: SocketAddr,
+    addr_from: SocketAddr,
+    nonce: u64,
+    user_agent: String,
+    streams: Vec<u64>
+}
+
+#[derive(Clone,Debug,PartialEq)]
+pub struct ObjectData {
+    nonce: u64,
+    expiry: SystemTime,
+    version: u64,
+    stream: u32,
+    object: Object
+}
+
+#[derive(Clone,Debug,PartialEq)]
 pub enum Message {
     Addr {
         addr_list: Vec<KnownNode>
@@ -96,24 +116,9 @@ pub enum Message {
     Inv {
         inventory: Vec<InventoryVector>
     },
-    Version {
-        version: u32,
-        services: u64,
-        timestamp: SystemTime,
-        addr_recv: SocketAddr,
-        addr_from: SocketAddr,
-        nonce: u64,
-        user_agent: String,
-        streams: Vec<u64>
-    },
+    Version(VersionData),
     Verack,
-    Object {
-        nonce: u64,
-        expiry: SystemTime,
-        version: u64,
-        stream: u32,
-        object: Object
-    },
+    Object(ObjectData)
 }
 
 impl MemorySize for Message {
@@ -122,9 +127,9 @@ impl MemorySize for Message {
             &Message::Addr {ref addr_list } => 9 + (42 * addr_list.len()),
             &Message::GetData { ref inventory, .. } => 9 + (32 * inventory.len()),
             &Message::Inv { ref inventory, .. } => 9 + (32 * inventory.len()),
-            &Message::Version { ref streams, ref user_agent, .. } => 86 + user_agent.len() + (8 * streams.len()),
+            &Message::Version(VersionData { ref streams, ref user_agent, .. }) => 86 + user_agent.len() + (8 * streams.len()),
             &Message::Verack => 0,
-            &Message::Object { .. }=> MAX_PAYLOAD_LENGTH_FOR_OBJECT as usize
+            &Message::Object(ObjectData { .. }) => MAX_PAYLOAD_LENGTH_FOR_OBJECT as usize
         };
 
         mem::size_of::<Message>() + extra_bytes
@@ -137,7 +142,7 @@ mod tests {
     use rand::{Rng,SeedableRng,XorShiftRng};
     use std::io::Cursor;
     use std::time::{Duration,UNIX_EPOCH};
-    use super::{InventoryVector,KnownNode,Message,Object,GetPubKey};
+    use super::{InventoryVector,KnownNode,Message,Object,GetPubKey,ObjectData,VersionData};
     use super::{read_message,write_message};
 
     #[test]
@@ -245,7 +250,7 @@ mod tests {
 
     #[test]
     fn test_version() {
-        let message = Message::Version {
+        let message = Message::Version(VersionData {
             version: 3,
             services: 1,
             timestamp: UNIX_EPOCH + Duration::from_secs(0x504030201),
@@ -254,7 +259,7 @@ mod tests {
             nonce: 0x12345678,
             user_agent: "Rubbem".to_string(),
             streams: vec![ 1 ]
-        };
+        });
 
         let expected = vec![
             0xe9, 0xbe, 0xb4, 0xd9, // magic
@@ -299,7 +304,7 @@ mod tests {
         let mut rng: XorShiftRng = SeedableRng::from_seed([0, 0, 0, 1]);
         let tag: Vec<u8> = rng.gen_iter::<u8>().take(32).collect();
 
-        let message = Message::Object {
+        let message = Message::Object(ObjectData {
             nonce: 0xf29f6e8b9acd981d,
             expiry: UNIX_EPOCH + Duration::from_secs(0x010203040506),
             version: 4, // GetPubKey verion
@@ -309,7 +314,7 @@ mod tests {
                     tag: tag.clone()
                 }
             )
-        };
+        });
 
         let mut expected = vec![
             0xe9, 0xbe, 0xb4, 0xd9, // magic

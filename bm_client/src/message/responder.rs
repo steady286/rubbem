@@ -2,13 +2,26 @@ use chunk::CreateChunk;
 use config::Config;
 use inventory::Inventory;
 use known_nodes::KnownNodes;
-use message::{InventoryVector,Message};
+use message::{InventoryVector,KnownNode,Message,ObjectData,VersionData};
 use net::to_socket_addr;
+use std::collections::HashSet;
 use std::sync::mpsc::SendError;
 use std::net::{Ipv4Addr,SocketAddr,SocketAddrV4};
-use std::time::SystemTime;
+use std::time::{Duration,SystemTime};
 
 use super::{MAX_INV_COUNT,MAX_NODES_COUNT};
+
+#[derive(Clone,Debug,PartialEq)]
+pub enum ResponderError {
+    ThreadDown(SendError<Message>),
+    UnacceptableMessage,
+}
+
+impl From<SendError<Message>> for ResponderError {
+    fn from(err: SendError<Message>) -> ResponderError {
+        ResponderError::ThreadDown(err)
+    }
+}
 
 pub struct MessageResponder {
     config: Config,
@@ -32,12 +45,14 @@ impl MessageResponder {
         f(self.create_version_message())
     }
 
-    pub fn respond<F>(&mut self, message: Message, send: F) -> Result<(), SendError<Message>>
+    pub fn respond<F>(&mut self, message: Message, send: F) -> Result<(), ResponderError>
         where F : Fn(Message) -> Result<(), SendError<Message>> {
         match message {
-            Message::Version { .. } => {
-                // TODO - record the peer as a known_node???
-                // TODO - check the version, stream, timestamp, nonce, etc.???
+            Message::Version(VersionData { version, services, timestamp, addr_from, nonce, streams, .. }) => {
+                try!(self.check_nonce(nonce));
+                try!(self.check_version_number(version));
+                try!(self.check_clock_difference(timestamp));
+                try!(self.add_known_node(streams, services, addr_from));
                 try!(send(Message::Verack));
             },
             Message::Verack => {
@@ -65,12 +80,78 @@ impl MessageResponder {
                     }
                 }
             },
-            m @ Message::Object { .. } => {
+            m @ Message::Object(ObjectData { .. }) => {
                 self.inventory.add_object_message(&m);
             }
         };
 
         Ok(())
+    }
+
+    fn check_nonce(&self, their_nonce: u64) -> Result<(), ResponderError> {
+        let our_nonce = self.config.nonce();
+        if their_nonce == our_nonce {
+            return Err(ResponderError::UnacceptableMessage);
+        }
+
+        Ok(())
+    }
+
+    fn check_version_number(&self, version: u32) -> Result<(), ResponderError> {
+        match version {
+            0 ... 2 => Err(ResponderError::UnacceptableMessage),
+            _ => Ok(())
+        }
+    }
+
+    fn check_clock_difference(&self, their_time: SystemTime) -> Result<(), ResponderError> {
+        let difference = match their_time.elapsed() {
+            Ok(duration) => duration,
+            Err(system_time_error) => system_time_error.duration()
+        };
+
+        if difference > Duration::from_secs(3600) {
+            return Err(ResponderError::UnacceptableMessage);
+        }
+
+        Ok(())
+    }
+
+    fn add_known_node(&mut self, streams: Vec<u64>, services: u64, addr_from: SocketAddr) -> Result<(), ResponderError> {
+        let streams_of_interest = self.get_streams_of_interest();
+
+        let mut stream_count = 0;
+        for stream in streams {
+            if stream > u32::max_value() as u64 {
+                return Err(ResponderError::UnacceptableMessage);
+            }
+
+            let u32_stream = stream as u32;
+            if streams_of_interest.contains(&u32_stream) {
+                let peer_node = KnownNode {
+                    last_seen: SystemTime::now(),
+                    stream: stream as u32,
+                    services: services,
+                    socket_addr: addr_from
+                };
+
+                self.known_nodes.add_known_node(&peer_node);
+
+                stream_count += 1;
+            }
+        }
+
+        match stream_count {
+            0 => Err(ResponderError::UnacceptableMessage),
+            _ => Ok(())
+        }
+    }
+
+    fn get_streams_of_interest(&self) -> HashSet<u32> {
+        // TODO - more configurable streams of interest
+        let mut streams: HashSet<u32> = HashSet::new();
+        streams.insert(1);
+        streams
     }
 
     fn create_version_message(&self) -> Message {
@@ -80,7 +161,7 @@ impl MessageResponder {
         let user_agent = self.config.user_agent().to_string();
         let streams = vec![ 1 ];
 
-        Message::Version {
+        Message::Version(VersionData {
             version: 3,
             services: 1,
             timestamp: SystemTime::now(),
@@ -89,7 +170,7 @@ impl MessageResponder {
             nonce: nonce,
             user_agent: user_agent,
             streams: streams
-        }
+        })
     }
 
     fn create_addr_message(&self) -> Message {
@@ -117,13 +198,13 @@ mod tests {
     use config::Config;
     use inventory::{Inventory,calculate_inventory_vector};
     use known_nodes::KnownNodes;
-    use message::{InventoryVector,KnownNode,Message,Object,GetPubKey};
+    use message::{InventoryVector,KnownNode,Message,Object,GetPubKey,ObjectData,VersionData};
     use net::to_socket_addr;
     use persist::Persister;
     use std::sync::Mutex;
     use std::sync::mpsc::SendError;
     use std::time::{Duration,SystemTime,UNIX_EPOCH};
-    use super::MessageResponder;
+    use super::{MessageResponder,ResponderError};
 
     struct Output {
         pub messages: Mutex<Vec<Message>>
@@ -148,7 +229,82 @@ mod tests {
 
     #[test]
     fn test_get_version_send_verack() {
-        let input = Message::Version {
+        let input = Message::Version(get_version_data());
+        let persister = Persister::new();
+        let output = run_test(input, persister.clone());
+        assert_eq!(1, output.len());
+
+        let message = &output[0];
+        match message {
+            &Message::Verack => {},
+            _ => panic!("Not a Verack message: {:?}", message)
+        }
+
+        let known_nodes = persister.get_known_nodes();
+        assert_eq!(1, known_nodes.len());
+
+        let peer_node = &known_nodes[0];
+        assert_eq!(to_socket_addr("127.0.0.1:8444"), peer_node.socket_addr);
+        assert_eq!(1, peer_node.services);
+        assert_eq!(1, peer_node.stream);
+
+        let last_seen = peer_node.last_seen;
+        match last_seen.elapsed() {
+            Ok(duration) => if duration > Duration::from_secs(60) {
+                panic!("last_seen value is too old");
+            },
+            Err(_) => panic!("last_seen value is in the future")
+        }
+    }
+
+    #[test]
+    fn test_get_version_with_low_version_number() {
+        let normal_version = get_version_data();
+        let input = Message::Version(VersionData { version: 2, .. normal_version });
+
+        let persister = Persister::new();
+        let output = run_test_error(input, persister);
+
+        match output {
+            Ok(_) => panic!("Expected an error because version too low"),
+            Err(_) => {}
+        }
+    }
+
+    #[test]
+    fn test_get_version_with_slow_clock() {
+        let slow_clock = SystemTime::now() - Duration::from_secs(5000);
+
+        let normal_version = get_version_data();
+        let input = Message::Version(VersionData { timestamp: slow_clock, .. normal_version });
+
+        let persister = Persister::new();
+        let output = run_test_error(input, persister);
+
+        match output {
+            Ok(_) => panic!("Expected an error because remote clock is too slow"),
+            Err(_) => {}
+        }
+    }
+
+    #[test]
+    fn test_get_version_with_fast_clock() {
+        let fast_clock = SystemTime::now() + Duration::from_secs(5000);
+
+        let normal_version = get_version_data();
+        let input = Message::Version(VersionData { timestamp: fast_clock, .. normal_version });
+
+        let persister = Persister::new();
+        let output = run_test_error(input, persister);
+
+        match output {
+            Ok(_) => panic!("Expected an error because remote clock is too fast"),
+            Err(_) => {}
+        }
+    }
+
+    fn get_version_data() -> VersionData {
+        VersionData {
             version: 3,
             services: 1,
             timestamp: SystemTime::now(),
@@ -157,14 +313,6 @@ mod tests {
             nonce: 0x0102030405060708,
             user_agent: "test".to_string(),
             streams: vec![ 1 ]
-        };
-        let output = run_test(input, Persister::new());
-        assert_eq!(1, output.len());
-
-        let message = &output[0];
-        match message {
-            &Message::Verack => {},
-            _ => panic!("Not a Verack message: {:?}", message)
         }
     }
 
@@ -338,18 +486,18 @@ mod tests {
     }
 
     fn create_object_message(nonce: u64) -> Message {
-        Message::Object {
+        Message::Object(ObjectData {
             nonce: nonce,
             expiry: UNIX_EPOCH + Duration::from_secs(2),
             version: 3,
             stream: 1,
             object: Object::GetPubKey(GetPubKey::V3 { ripe: vec![4; 20] })
-        }
+        })
     }
 
     fn check_object_message(message: &Message, expected_nonce: u64) {
         match message {
-            &Message::Object { nonce, .. } => {
+            &Message::Object(ObjectData { nonce, .. }) => {
                 assert_eq!(expected_nonce, nonce);
             },
             _ => panic!("Not an Object message: {:?}", message)
@@ -357,6 +505,10 @@ mod tests {
     }
 
     fn run_test(input: Message, persister: Persister) -> Vec<Message> {
+        run_test_error(input, persister).unwrap()
+    }
+
+    fn run_test_error(input: Message, persister: Persister) -> Result<Vec<Message>, ResponderError> {
         let config = Config::new();
         let known_nodes = KnownNodes::new(persister.clone());
         let inventory = Inventory::new(persister.clone());
@@ -364,8 +516,11 @@ mod tests {
         let mut responder = MessageResponder::new(&config, &known_nodes, &inventory, peer_addr);
 
         let output = Output::new();
-        responder.respond(input, |m| { output.add(m) } ).unwrap();
+        let result = responder.respond(input, |m| { output.add(m) } );
 
-        output.get_messages()
+        match result {
+            Ok(_) => Ok(output.get_messages()),
+            Err(e) => Err(e)
+        }
     }
 }

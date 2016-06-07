@@ -21,17 +21,9 @@ impl KnownNodes {
         self.persister.get_known_nodes().len()
     }
 
-    pub fn get_random(&self) -> Option<KnownNode> {
-        self.get_random_but_not(vec![])
-    }
-
     pub fn get_random_but_not(&self, exclude: Vec<SocketAddr>) -> Option<KnownNode> {
         let mut single_selection = self.get_random_selection_but_not(1, exclude);
         single_selection.pop()
-    }
-
-    pub fn get_random_selection(&self, at_most: usize) -> Vec<KnownNode> {
-        self.get_random_selection_but_not(at_most, vec![])
     }
 
     pub fn get_random_selection_but_not(&self, at_most: usize, exclude: Vec<SocketAddr>) -> Vec<KnownNode> {

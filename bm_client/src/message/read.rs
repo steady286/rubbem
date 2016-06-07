@@ -7,7 +7,7 @@ use std::io::{Cursor,Read};
 use std::net::{Ipv6Addr,SocketAddr,SocketAddrV4,SocketAddrV6};
 use std::time::{Duration,SystemTime,UNIX_EPOCH};
 
-use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message};
+use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message,ObjectData,VersionData};
 use super::{MAGIC,MAX_GETDATA_COUNT,MAX_INV_COUNT,MAX_NODES_COUNT,MAX_PAYLOAD_LENGTH};
 
 #[derive(Debug,PartialEq)]
@@ -165,7 +165,7 @@ fn read_version_message(bytes: &[u8]) -> Result<Message,ParseError> {
 
     // TODO - check no more data - here and in other messages
 
-    Ok(Message::Version {
+    Ok(Message::Version(VersionData {
         version: version,
         services: services,
         timestamp: timestamp,
@@ -174,7 +174,7 @@ fn read_version_message(bytes: &[u8]) -> Result<Message,ParseError> {
         nonce: nonce,
         user_agent: user_agent,
         streams: streams
-    })
+    }))
 }
 
 fn read_verack_message(bytes: &[u8]) -> Result<Message,ParseError> {
@@ -197,13 +197,13 @@ fn read_object_message(bytes: &[u8]) -> Result<Message,ParseError> {
     let object_position = cursor.position() as usize;
     let object = try!(read_object(object_type, version, &bytes[object_position..]));
 
-    Ok(Message::Object {
+    Ok(Message::Object(ObjectData {
         nonce: nonce,
         expiry: expiry,
         version: version,
         stream: stream,
         object: object
-    })
+    }))
 }
 
 fn read_object(object_type: u32, version: u64, bytes: &[u8]) -> Result<Object,ParseError> {

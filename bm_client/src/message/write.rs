@@ -5,7 +5,7 @@ use encoding::all::ASCII;
 use std::net::SocketAddr;
 use std::time::{SystemTime,UNIX_EPOCH};
 
-use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message};
+use super::{InventoryVector,KnownNode,GetPubKey,PubKey,Broadcast,Object,Message,ObjectData,VersionData};
 use super::{MAGIC,MAX_PAYLOAD_LENGTH,MAX_NODES_COUNT,MAX_GETDATA_COUNT,MAX_INV_COUNT};
 
 pub fn write_message(output: &mut Vec<u8>, message: &Message) {
@@ -29,9 +29,9 @@ fn write_command(output: &mut Vec<u8>, message: &Message) {
         &Message::Addr {..} => "addr",
         &Message::GetData {..} => "getdata",
         &Message::Inv {..} => "inv",
-        &Message::Version {..} => "version",
+        &Message::Version(VersionData {..}) => "version",
         &Message::Verack => "verack",
-        &Message::Object {..} => "object"
+        &Message::Object(ObjectData {..}) => "object"
     };
 
     let mut ascii_command = ASCII.encode(&command, EncoderTrap::Ignore).unwrap();
@@ -64,7 +64,7 @@ fn write_payload(output: &mut Vec<u8>, message: &Message) {
             ref inventory
         } => write_inv_message(output, inventory),
 
-        &Message::Version {
+        &Message::Version(VersionData {
             version,
             services,
             ref timestamp,
@@ -73,17 +73,17 @@ fn write_payload(output: &mut Vec<u8>, message: &Message) {
             nonce,
             ref user_agent,
             ref streams
-        } => write_version_message(output, version, services, timestamp, addr_recv, addr_from, nonce, user_agent, streams),
+        }) => write_version_message(output, version, services, timestamp, addr_recv, addr_from, nonce, user_agent, streams),
 
         &Message::Verack => write_verack_message(output),
 
-        &Message::Object {
+        &Message::Object(ObjectData {
             nonce,
             ref expiry,
             version,
             stream,
             ref object
-        } => write_object_message(output, nonce, expiry, version, stream, object)
+        }) => write_object_message(output, nonce, expiry, version, stream, object)
     }
 }
 
