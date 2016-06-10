@@ -434,13 +434,6 @@ fn read_bytes<A: Read>(source: &mut A, count: usize) -> Result<Vec<u8>,ParseErro
     Ok(bytes)
 }
 
-fn read_remaining_bytes<A: Read>(source: &mut A) -> Result<Vec<u8>, ParseError> {
-    let mut bytes: Vec<u8> = vec![];
-    try!(source.read_to_end(&mut bytes).map_err(|_| ParseError::UnexpectedPayloadEnd));
-
-    Ok(bytes)
-}
-
 fn read_u64<A: Read>(source: &mut A) -> Result<u64,ParseError> {
     source.read_u64::<BigEndian>().map_err(|_| ParseError::UnexpectedPayloadEnd)
 }
@@ -474,8 +467,6 @@ mod tests {
     use super::read_var_int_usize;
     use super::read_var_int;
     use super::read_bytes;
-    use super::read_remaining_bytes;
-    use super::read_u16;
 
     #[test]
     fn test_read_address_and_port_for_v4() {
@@ -611,16 +602,5 @@ mod tests {
 
         let bytes = read_bytes(&mut source, 2).unwrap();
         assert_eq!(vec![ 1, 2 ], bytes);
-    }
-
-    #[test]
-    fn test_read_remaining_bytes() {
-        let bytes: Vec<u8> = vec![ 1, 2, 3, 4, 5 ];
-        let mut source = Cursor::new(bytes);
-
-        read_u16(&mut source).unwrap();
-
-        let remaining_bytes = read_remaining_bytes(&mut source).unwrap();
-        assert_eq!(vec![ 3, 4, 5 ], remaining_bytes);
     }
 }

@@ -2,10 +2,11 @@ use config::Config;
 use connection::{Connection,ConnectionState};
 use inventory::Inventory;
 use known_nodes::KnownNodes;
-use message::MessageResponder;
+use message::{MessageHandler,MessageResponder,MessageVerifier};
 use std::net::SocketAddr;
 use std::time::{Duration};
 use std::thread::{Builder,sleep};
+use timegen::TimeType;
 
 pub struct PeerConnector {
     config: Config,
@@ -46,8 +47,11 @@ impl PeerConnector
                     let socket_addrs_in_use: Vec<SocketAddr> = (&connections).iter().filter_map(|connection| connection.peer_addr()).collect();
                     let known_node = break_on_none!(known_nodes.get_random_but_not(socket_addrs_in_use));
                     let peer_addr = known_node.socket_addr;
-                    let message_responder = MessageResponder::new(&config, &known_nodes, &inventory, peer_addr);
-                    let connection = Connection::new(message_responder, peer_addr);
+                    let message_handler = MessageHandler::new(
+                        MessageVerifier::new(&config, TimeType::Real),
+                        MessageResponder::new(&config, &known_nodes, &inventory, peer_addr)
+                    );
+                    let connection = Connection::new(message_handler, peer_addr);
                     connections.push(connection);
                 }
                 sleep(Duration::from_millis(100));

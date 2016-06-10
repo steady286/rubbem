@@ -1,8 +1,8 @@
+How can we look up an address to send a message
+Actually encrypt outgoing messages
 What if we receive the same object or addr message more than once? Tests - causes a problem for KnownNode
 What if we receive a duplicate message (e.g. get a Version message when the connection is already Established)
 Sending addr and object messages on to peers?
-Integrate POW
-Filter messages that do not have an adequate POW
 MessageResponder - get_streams_of_interest - more than stream 1.
 More tests for read / write -- all the object types / version
 read.rs TODO - check all payload has been read
@@ -12,6 +12,10 @@ Communicate messages from the connection to the wider bm_client
  API for BMClient? Create addresses, send messages (sync vs async?), event for message receipt, configure IP addresses/ports
 Test encrypted messages for decryptability
 Cope better with failing to connect to enough peers in peer.rs loop
+
+Small jobs:
+Change BMClient::new() to return a Result<>
+
 
 Message logic:
 

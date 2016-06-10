@@ -7,7 +7,7 @@ use net::to_socket_addr;
 use std::collections::HashSet;
 use std::sync::mpsc::SendError;
 use std::net::{Ipv4Addr,SocketAddr,SocketAddrV4};
-use std::time::{Duration,SystemTime};
+use std::time::SystemTime;
 
 use super::{MAX_INV_COUNT,MAX_NODES_COUNT};
 
@@ -41,17 +41,16 @@ impl MessageResponder {
     }
 
     pub fn send_version<F>(&self, f: F) -> Result<(), SendError<Message>>
-        where F : Fn(Message) -> Result<(), SendError<Message>> {
+        where F : Fn(Message) -> Result<(), SendError<Message>>
+    {
         f(self.create_version_message())
     }
 
     pub fn respond<F>(&mut self, message: Message, send: F) -> Result<(), ResponderError>
-        where F : Fn(Message) -> Result<(), SendError<Message>> {
+        where F : Fn(Message) -> Result<(), SendError<Message>>
+    {
         match message {
-            Message::Version(VersionData { version, services, timestamp, addr_from, nonce, streams, .. }) => {
-                try!(self.check_nonce(nonce));
-                try!(self.check_version_number(version));
-                try!(self.check_clock_difference(timestamp));
+            Message::Version(VersionData { services, addr_from, streams, .. }) => {
                 try!(self.add_known_node(streams, services, addr_from));
                 try!(send(Message::Verack));
             },
@@ -84,35 +83,6 @@ impl MessageResponder {
                 self.inventory.add_object_message(&m);
             }
         };
-
-        Ok(())
-    }
-
-    fn check_nonce(&self, their_nonce: u64) -> Result<(), ResponderError> {
-        let our_nonce = self.config.nonce();
-        if their_nonce == our_nonce {
-            return Err(ResponderError::UnacceptableMessage);
-        }
-
-        Ok(())
-    }
-
-    fn check_version_number(&self, version: u32) -> Result<(), ResponderError> {
-        match version {
-            0 ... 2 => Err(ResponderError::UnacceptableMessage),
-            _ => Ok(())
-        }
-    }
-
-    fn check_clock_difference(&self, their_time: SystemTime) -> Result<(), ResponderError> {
-        let difference = match their_time.elapsed() {
-            Ok(duration) => duration,
-            Err(system_time_error) => system_time_error.duration()
-        };
-
-        if difference > Duration::from_secs(3600) {
-            return Err(ResponderError::UnacceptableMessage);
-        }
 
         Ok(())
     }
@@ -204,7 +174,7 @@ mod tests {
     use std::sync::Mutex;
     use std::sync::mpsc::SendError;
     use std::time::{Duration,SystemTime,UNIX_EPOCH};
-    use super::{MessageResponder,ResponderError};
+    use super::MessageResponder;
 
     struct Output {
         pub messages: Mutex<Vec<Message>>
@@ -254,52 +224,6 @@ mod tests {
                 panic!("last_seen value is too old");
             },
             Err(_) => panic!("last_seen value is in the future")
-        }
-    }
-
-    #[test]
-    fn test_get_version_with_low_version_number() {
-        let normal_version = get_version_data();
-        let input = Message::Version(VersionData { version: 2, .. normal_version });
-
-        let persister = Persister::new();
-        let output = run_test_error(input, persister);
-
-        match output {
-            Ok(_) => panic!("Expected an error because version too low"),
-            Err(_) => {}
-        }
-    }
-
-    #[test]
-    fn test_get_version_with_slow_clock() {
-        let slow_clock = SystemTime::now() - Duration::from_secs(5000);
-
-        let normal_version = get_version_data();
-        let input = Message::Version(VersionData { timestamp: slow_clock, .. normal_version });
-
-        let persister = Persister::new();
-        let output = run_test_error(input, persister);
-
-        match output {
-            Ok(_) => panic!("Expected an error because remote clock is too slow"),
-            Err(_) => {}
-        }
-    }
-
-    #[test]
-    fn test_get_version_with_fast_clock() {
-        let fast_clock = SystemTime::now() + Duration::from_secs(5000);
-
-        let normal_version = get_version_data();
-        let input = Message::Version(VersionData { timestamp: fast_clock, .. normal_version });
-
-        let persister = Persister::new();
-        let output = run_test_error(input, persister);
-
-        match output {
-            Ok(_) => panic!("Expected an error because remote clock is too fast"),
-            Err(_) => {}
         }
     }
 
@@ -505,10 +429,6 @@ mod tests {
     }
 
     fn run_test(input: Message, persister: Persister) -> Vec<Message> {
-        run_test_error(input, persister).unwrap()
-    }
-
-    fn run_test_error(input: Message, persister: Persister) -> Result<Vec<Message>, ResponderError> {
         let config = Config::new();
         let known_nodes = KnownNodes::new(persister.clone());
         let inventory = Inventory::new(persister.clone());
@@ -516,11 +436,8 @@ mod tests {
         let mut responder = MessageResponder::new(&config, &known_nodes, &inventory, peer_addr);
 
         let output = Output::new();
-        let result = responder.respond(input, |m| { output.add(m) } );
+        responder.respond(input, |m| { output.add(m) } ).unwrap();
 
-        match result {
-            Ok(_) => Ok(output.get_messages()),
-            Err(e) => Err(e)
-        }
+        output.get_messages()
     }
 }

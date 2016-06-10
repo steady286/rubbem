@@ -144,6 +144,10 @@ fn write_version_message(output: &mut Vec<u8>, version: u32, services: u64, time
 fn write_verack_message(_: &mut Vec<u8>) {
 }
 
+pub fn write_object_message_data(output: &mut Vec<u8>, object_data: &ObjectData) {
+    write_object_message(output, object_data.nonce, &object_data.expiry, object_data.version, object_data.stream, &object_data.object);
+}
+
 fn write_object_message(output: &mut Vec<u8>, nonce: u64, expiry: &SystemTime, version: u64, stream: u32, object: &Object) {
     write_u64(output, nonce);
     write_i64(output, get_secs_from_time(expiry));

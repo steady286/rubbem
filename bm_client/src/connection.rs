@@ -1,5 +1,5 @@
 use channel::{ConstrainedReceiver,ConstrainedSender,constrained_channel};
-use message::{Message,MessageResponder,ParseError,read_message,write_message,VersionData};
+use message::{Message,MessageHandler,ParseError,read_message,write_message,VersionData};
 use std::io::{Error,Write};
 use std::net::{Shutdown,SocketAddr,TcpStream};
 use std::sync::{Arc,RwLock};
@@ -47,9 +47,9 @@ pub struct Connection {
 }
 
 impl Connection {
-    pub fn new(message_responder: MessageResponder, socket_addr: SocketAddr) -> Connection {
+    pub fn new(message_handler: MessageHandler, socket_addr: SocketAddr) -> Connection {
         match TcpStream::connect(&socket_addr) {
-            Ok(tcp_stream) => new_from_stream(message_responder, tcp_stream),
+            Ok(tcp_stream) => new_from_stream(message_handler, tcp_stream),
             Err(_) => error_connection(None)
         }
     }
@@ -74,14 +74,14 @@ impl Drop for Connection {
     }
 }
 
-fn new_from_stream(message_responder: MessageResponder, tcp_stream: TcpStream) -> Connection {
+fn new_from_stream(message_handler: MessageHandler, tcp_stream: TcpStream) -> Connection {
     let socket_addr = tcp_stream.peer_addr().unwrap();
     let state = StateHolder::new(ConnectionState::Fresh(Instant::now()));
 
     // Make channels for thread communication
     let (read_state_tx, read_state_rx) = sync_channel(0);
-    let (state_response_tx, state_response_rx) = constrained_channel(MAX_WRITE_BUFFER);
-    let (response_write_tx, response_write_rx) = sync_channel(0);
+    let (state_handler_tx, state_handler_rx) = constrained_channel(MAX_WRITE_BUFFER);
+    let (handler_write_tx, handler_write_rx) = sync_channel(0);
 
     // Make thread to read messages from the peer
     let read_name = format!("Connection {} - read", socket_addr);
@@ -93,20 +93,20 @@ fn new_from_stream(message_responder: MessageResponder, tcp_stream: TcpStream) -
     let state_name = format!("Connection {} - state", socket_addr);
     let state_thread_state = state.clone();
     let state_thread = create_thread(state_name, state.clone(),
-        || state_thread_body(state_thread_state, read_state_rx, state_response_tx));
+        || state_thread_body(state_thread_state, read_state_rx, state_handler_tx));
 
-    // Make thread to create appropriate response messages
-    let response_name = format!("Connection {} - response", socket_addr);
-    let response_thread = create_thread(response_name, state.clone(),
-        || response_thread_body(message_responder, state_response_rx, response_write_tx));
+    // Make thread to handle the messages - verifying them and creating appropriate response messages
+    let handler_name = format!("Connection {} - verify/response", socket_addr);
+    let handler_thread = create_thread(handler_name, state.clone(),
+        || handler_thread_body(message_handler, state_handler_rx, handler_write_tx));
 
     // Make thread to write messages to the peer
     let write_name = format!("Connection {} - write", socket_addr);
     let write_tcp_stream = clone_stream(&tcp_stream);
     let write_thread = create_thread(write_name, state.clone(),
-        || write_thread_body(write_tcp_stream, response_write_rx));
+        || write_thread_body(write_tcp_stream, handler_write_rx));
 
-    if read_thread.is_err() || state_thread.is_err() || response_thread.is_err() || write_thread.is_err() {
+    if read_thread.is_err() || state_thread.is_err() || handler_thread.is_err() || write_thread.is_err() {
         state.set_state(ConnectionState::Error);
         return error_connection(Some(tcp_stream));
     }
@@ -149,7 +149,7 @@ fn read_thread_body(mut stream: TcpStream, state_chan: SyncSender<Result<Message
     }
 }
 
-fn state_thread_body(state_holder: StateHolder, read_chan: Receiver<Result<Message,ParseError>>, response_chan: ConstrainedSender<Message>) -> () {
+fn state_thread_body(state_holder: StateHolder, read_chan: Receiver<Result<Message,ParseError>>, handler_chan: ConstrainedSender<Message>) -> () {
     loop {
         let current_state = state_holder.get_state();
 
@@ -170,7 +170,7 @@ fn state_thread_body(state_holder: StateHolder, read_chan: Receiver<Result<Messa
 
         state_holder.set_state(new_state);
         for forward_message in forward_messages.into_iter() {
-            response_chan.send(forward_message).unwrap();
+            handler_chan.send(forward_message).unwrap();
         }
 
         match new_state {
@@ -198,18 +198,18 @@ fn check_staleness(state_holder: &StateHolder, time: Instant, duration: Duration
     }
 }
 
-fn response_thread_body(mut message_responder: MessageResponder, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> () {
-    return_on_err!(message_responder.send_version(|m| write_chan.send(m)));
+fn handler_thread_body(mut message_handler: MessageHandler, state_chan: ConstrainedReceiver<Message>, write_chan: SyncSender<Message>) -> () {
+    return_on_err!(message_handler.send_version(|m| write_chan.send(m)));
 
     loop {
         let message = break_on_err!(state_chan.recv());
-        break_on_err!(message_responder.respond(message, |m| write_chan.send(m)));
+        break_on_err!(message_handler.handle(message, |m| write_chan.send(m)));
     }
 }
 
-fn write_thread_body(mut stream: TcpStream, response_chan: Receiver<Message>) -> () {
+fn write_thread_body(mut stream: TcpStream, handler_chan: Receiver<Message>) -> () {
     loop {
-        let message = break_on_err!(response_chan.recv());
+        let message = break_on_err!(handler_chan.recv());
 
         let mut message_bytes = vec![];
         write_message(&mut message_bytes, &message);

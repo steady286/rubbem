@@ -1,11 +1,19 @@
+mod handler;
+mod pow;
 mod read;
 mod responder;
+mod sender;
+mod verify;
 mod write;
 
 pub use self::read::ParseError;
+pub use self::handler::MessageHandler;
 pub use self::responder::MessageResponder;
+pub use self::verify::MessageVerifier;
 pub use self::read::read_message;
 pub use self::write::write_message;
+pub use self::sender::Sender;
+pub use self::sender::MessageSendError;
 
 use channel::MemorySize;
 use std::mem;

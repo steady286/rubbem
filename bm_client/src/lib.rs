@@ -22,6 +22,7 @@ use config::Config;
 use inventory::Inventory;
 use known_nodes::KnownNodes;
 use message::KnownNode;
+use message::{Sender,MessageSendError};
 use net::to_socket_addr;
 use peer::PeerConnector;
 use persist::Persister;
@@ -33,31 +34,40 @@ pub enum BMError {
 }
 
 pub struct BMClient {
-    config: Config,
     known_nodes: KnownNodes,
-    inventory: Inventory
+    sender: Sender,
+    peer_connector: PeerConnector
 }
 
 impl BMClient {
     pub fn new() -> BMClient {
-        // Move this to a Result returned from new()
+        // TODO - Move this to a Result returned from new()
         // assert!(usize::max_value() >= u32::max_value(), "You must use at least a 32-bit system");
 
         let config = Config::new();
         let persister = Persister::new();
-        let known_nodes = KnownNodes::new(persister.clone());
+
+        let mut known_nodes = KnownNodes::new(persister.clone());
+        bootstrap_known_nodes(&mut known_nodes);
+
         let inventory = Inventory::new(persister);
+        let sender = Sender::new(inventory.clone());
+        let peer_connector = PeerConnector::new(&config, &known_nodes, &inventory);
 
         BMClient {
-            config: config,
             known_nodes: known_nodes,
-            inventory: inventory
+            sender: sender,
+            peer_connector: peer_connector
         }
     }
 
     pub fn start(&mut self) {
         bootstrap_known_nodes(&mut self.known_nodes);
-        PeerConnector::new(&self.config, &self.known_nodes, &self.inventory).start();
+        self.peer_connector.start();
+    }
+
+    pub fn send_message(&mut self, text: &str) -> Result<(), MessageSendError> {
+        self.sender.send_message(text)
     }
 }
 

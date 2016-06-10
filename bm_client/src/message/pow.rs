@@ -1,73 +1,16 @@
 use byteorder::{BigEndian,ReadBytesExt,WriteBytesExt};
 use checksum::sha512_hash;
-use message::{MAX_PAYLOAD_LENGTH_FOR_OBJECT};
+use message::{ObjectData,MAX_PAYLOAD_LENGTH_FOR_OBJECT};
+use message::write::write_object_message_data;
 use std::cmp::max;
 use std::io::Cursor;
 use std::time::SystemTime;
-use timegen::TimeGenerator;
+use timegen::{TimeType,get_time};
 
 #[derive(Debug,PartialEq)]
 pub enum TimeToLiveError {
     ObjectAlreadyDied,
     ObjectLivesTooLong
-}
-
-pub struct ProofOfWorkConfig<T: TimeGenerator> {
-    trials_per_byte: u64,
-    extra_bytes: u64,
-    minimum_ttl: i64,
-    maximum_ttl: u32,
-    tide_ttl: u32,
-    time_fn: T
-}
-
-impl<T: TimeGenerator> ProofOfWorkConfig<T> {
-    pub fn new(trials_per_byte: u64, extra_bytes: u64, minimum_ttl: i64, maximum_ttl: u32, tide_ttl: u32, time_fn: T) -> ProofOfWorkConfig<T> {
-        assert!(tide_ttl > 0);
-        assert!(trials_per_byte > 0);
-
-        ProofOfWorkConfig::<T> {
-            trials_per_byte: trials_per_byte,
-            extra_bytes: extra_bytes,
-            minimum_ttl: minimum_ttl,
-            maximum_ttl: maximum_ttl,
-            tide_ttl: tide_ttl,
-            time_fn: time_fn
-        }
-    }
-
-    pub fn trials_per_byte(&self) -> u64 {
-        self.trials_per_byte
-    }
-
-    pub fn extra_bytes(&self) -> u64 {
-        self.extra_bytes
-    }
-
-    pub fn ttl(&self, expiry: SystemTime) -> Result<u32,TimeToLiveError> {
-        let now: SystemTime = self.time_fn.get_time();
-
-        let ttl = match expiry.duration_since(now) {
-            Ok(duration) => duration.as_secs(),
-            Err(time_error) => -(time_error.duration().as_secs())
-        }
-
-        if ttl < self.minimum_ttl {
-            return Err(TimeToLiveError::ObjectAlreadyDied);
-        }
-
-        if ttl > u32::max_value() as i64 {
-            return Err(TimeToLiveError::ObjectLivesTooLong);
-        }
-
-        let positive_ttl = max(1u32, ttl as u32);
-
-        if positive_ttl > self.maximum_ttl {
-            return Err(TimeToLiveError::ObjectLivesTooLong);
-        }
-
-        Ok(max(self.tide_ttl, positive_ttl))
-    }
 }
 
 #[derive(Debug,PartialEq)]
@@ -77,21 +20,6 @@ pub enum GenerateError {
     NoProofFound
 }
 
-fn to_generate_error(e: TimeToLiveError) -> GenerateError {
-    match e {
-        TimeToLiveError::ObjectAlreadyDied => GenerateError::ObjectAlreadyDied,
-        TimeToLiveError::ObjectLivesTooLong => GenerateError::ObjectLivesTooLong
-    }
-}
-
-pub fn generate_proof<T: TimeGenerator>(payload: &[u8], expiry: SystemTime, config: ProofOfWorkConfig<T>) -> Result<u64,GenerateError> {
-    assert!((8 + payload.len()) <= u32::max_value() as usize);
-
-    let full_payload_length = 8u32 + payload.len() as u32;
-    let target = try!(target(full_payload_length, expiry, config).map_err(to_generate_error));
-    generate_pow_given_target(payload, target)
-}
-
 #[derive(Debug,PartialEq)]
 pub enum VerifyError {
     ObjectAlreadyDied,
@@ -99,33 +27,140 @@ pub enum VerifyError {
     UnacceptableProof
 }
 
-fn to_verify_error(e: TimeToLiveError) -> VerifyError {
-    match e {
-        TimeToLiveError::ObjectAlreadyDied => VerifyError::ObjectAlreadyDied,
-        TimeToLiveError::ObjectLivesTooLong => VerifyError::ObjectLivesTooLong
+impl From<TimeToLiveError> for GenerateError {
+    fn from(err: TimeToLiveError) -> GenerateError {
+        match err {
+            TimeToLiveError::ObjectAlreadyDied => GenerateError::ObjectAlreadyDied,
+            TimeToLiveError::ObjectLivesTooLong => GenerateError::ObjectLivesTooLong
+        }
     }
 }
 
-pub fn verify_proof<T: TimeGenerator>(nonce: u64, payload: &[u8], expiry: SystemTime, config: ProofOfWorkConfig<T>) -> Result<(),VerifyError> {
-    let target = try!(target(payload.len() as u32, expiry, config).map_err(to_verify_error));
-
-    let initial_hash = sha512_hash(payload);
-    assert!(initial_hash.len() == 64);
-
-    let mut input_cursor = Cursor::new(Vec::<u8>::with_capacity(72));
-    input_cursor.write_u64::<BigEndian>(nonce).unwrap();
-    let mut input = input_cursor.into_inner();
-    input.extend(initial_hash.to_vec());
-
-    let trial_value = first_8_of_double_digest(&input);
-    if trial_value > target {
-        return Err(VerifyError::UnacceptableProof);
+impl From<TimeToLiveError> for VerifyError {
+    fn from(err: TimeToLiveError) -> VerifyError {
+        match err {
+            TimeToLiveError::ObjectAlreadyDied => VerifyError::ObjectAlreadyDied,
+            TimeToLiveError::ObjectLivesTooLong => VerifyError::ObjectLivesTooLong
+        }
     }
-
-    Ok(())
 }
 
-fn generate_pow_given_target(payload: &[u8], target: u64) -> Result<u64,GenerateError> {
+pub struct ProofOfWorkConfig {
+    trials_per_byte: u64,
+    extra_bytes: u64,
+    minimum_ttl: i64,
+    maximum_ttl: u32,
+    tide_ttl: u32
+}
+
+pub fn network_pow_config() -> ProofOfWorkConfig {
+    ProofOfWorkConfig {
+        trials_per_byte: 1000,
+        extra_bytes: 1000,
+        minimum_ttl: -3600, // 1 hour ago
+        maximum_ttl: 2430000, // 28 days and 3 hours
+        tide_ttl: 300 // 5 minutes
+    }
+}
+
+pub struct ProofOfWork {
+    time_type: TimeType
+}
+
+impl ProofOfWork {
+    pub fn new(time_type: TimeType) -> ProofOfWork {
+        ProofOfWork {
+            time_type: time_type
+        }
+    }
+
+    pub fn generate(&self, object_data: &ObjectData, pow_config: ProofOfWorkConfig) -> Result<u64, GenerateError> {
+        assert!(pow_config.tide_ttl > 0);
+        assert!(pow_config.trials_per_byte > 0);
+
+        let payload_with_nonce = payload_with_nonce(object_data);
+        let payload_without_nonce = &payload_with_nonce[8..];
+
+        assert!(payload_with_nonce.len() <= u32::max_value() as usize);
+        let payload_with_nonce_length = payload_with_nonce.len() as u32;
+
+        let expiry = object_data.expiry;
+        let target = try!(self.target(payload_with_nonce_length, expiry, pow_config));
+
+        generate_pow_given_target(payload_without_nonce, target)
+    }
+
+    pub fn verify(&self, object_data: &ObjectData, pow_config: ProofOfWorkConfig) -> Result<(), VerifyError> {
+        assert!(pow_config.tide_ttl > 0);
+        assert!(pow_config.trials_per_byte > 0);
+
+        let payload_with_nonce = payload_with_nonce(object_data);
+        let payload_without_nonce = &payload_with_nonce[8..];
+
+        assert!(payload_with_nonce.len() <= u32::max_value() as usize);
+        let payload_with_nonce_length = payload_with_nonce.len() as u32;
+
+        let expiry = object_data.expiry;
+        let target = try!(self.target(payload_with_nonce_length, expiry, pow_config));
+
+        let initial_hash = sha512_hash(payload_without_nonce);
+        assert!(initial_hash.len() == 64);
+
+        let nonce = object_data.nonce;
+        let mut input_cursor = Cursor::new(Vec::<u8>::with_capacity(72));
+        input_cursor.write_u64::<BigEndian>(nonce).unwrap();
+        let mut input = input_cursor.into_inner();
+        input.extend(initial_hash.to_vec());
+
+        let trial_value = first_8_of_double_digest(&input);
+        if trial_value > target {
+            return Err(VerifyError::UnacceptableProof);
+        }
+
+        Ok(())
+    }
+
+    fn target(&self, payload_length: u32, expiry: SystemTime, pow_config: ProofOfWorkConfig) -> Result<u64, TimeToLiveError> {
+        assert!(payload_length > 0);
+        assert!(payload_length <= MAX_PAYLOAD_LENGTH_FOR_OBJECT);
+        let ttl = try!(self.ttl(expiry, &pow_config));
+
+        Ok(target_from_ttl(payload_length, ttl, pow_config.trials_per_byte, pow_config.extra_bytes))
+    }
+
+    fn ttl(&self, expiry: SystemTime, pow_config: &ProofOfWorkConfig) -> Result<u32, TimeToLiveError> {
+        let now: SystemTime = get_time(&self.time_type);
+
+        let ttl = match expiry.duration_since(now) {
+            Ok(duration) => try!(fit_in_i64(duration.as_secs(), TimeToLiveError::ObjectLivesTooLong)),
+            Err(time_error) => -(try!(fit_in_i64(time_error.duration().as_secs(), TimeToLiveError::ObjectLivesTooLong)))
+        };
+
+        if ttl < pow_config.minimum_ttl {
+            return Err(TimeToLiveError::ObjectAlreadyDied);
+        }
+
+        if ttl > u32::max_value() as i64 {
+            return Err(TimeToLiveError::ObjectLivesTooLong);
+        }
+
+        let positive_ttl = max(1u32, ttl as u32);
+
+        if positive_ttl > pow_config.maximum_ttl {
+            return Err(TimeToLiveError::ObjectLivesTooLong);
+        }
+
+        Ok(max(pow_config.tide_ttl, positive_ttl))
+    }
+}
+
+fn payload_with_nonce(object_data: &ObjectData) -> Vec<u8> {
+    let mut output = vec![];
+    write_object_message_data(&mut output, object_data);
+    output
+}
+
+fn generate_pow_given_target(payload: &[u8], target: u64) -> Result<u64, GenerateError> {
     let initial_hash = sha512_hash(payload);
     assert!(initial_hash.len() == 64);
 
@@ -162,15 +197,6 @@ fn first_8_of_double_digest(input: &[u8]) -> u64 {
     output_cursor.read_u64::<BigEndian>().unwrap()
 }
 
-fn target<T: TimeGenerator>(payload_length: u32, expiry: SystemTime, config: ProofOfWorkConfig<T>) -> Result<u64,TimeToLiveError> {
-    assert!(payload_length > 0);
-    assert!(payload_length <= MAX_PAYLOAD_LENGTH_FOR_OBJECT);
-    let ttl = try!(config.ttl(expiry));
-
-    Ok(target_from_ttl(payload_length, ttl, config.trials_per_byte(), config.extra_bytes()))
-}
-
-
 fn target_from_ttl(payload_length: u32, ttl: u32, trials_per_byte: u64, extra_bytes:u64) -> u64 {
     let payload_length_f64 = payload_length as f64;
     let ttl_f64 = ttl as f64;
@@ -185,6 +211,13 @@ fn target_f64(payload_length: f64, time_to_live: f64, trials_per_byte: f64, extr
     2.0f64.powi(64) / (trials_per_byte * (byte_count + ((time_to_live * byte_count) / 2.0f64.powi(16))))
 }
 
+fn fit_in_i64(value: u64, error: TimeToLiveError) -> Result<i64, TimeToLiveError> {
+    if value > i64::max_value() as u64 {
+        return Err(error);
+    }
+
+    Ok(value as i64)
+}
 
 #[cfg(test)]
 mod tests {
