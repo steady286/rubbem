@@ -1,6 +1,8 @@
+extern crate crypto;
+
 use byteorder::{BigEndian,ReadBytesExt};
-use crypto::digest::Digest;
-use crypto::sha2::Sha512;
+use self::crypto::digest::Digest;
+use self::crypto::sha2::Sha512;
 use std::io::Cursor;
 
 pub fn sha512_hash(input: &[u8]) -> [u8; 64] {
@@ -21,6 +23,16 @@ pub fn sha512_checksum(input: &[u8]) -> u32 {
 
     let mut cursor = Cursor::new(&hash[0..4]);
     cursor.read_u32::<BigEndian>().unwrap()
+}
+
+pub fn double_sha512_checksum_bytes(input: &[u8]) -> [u8; 4] {
+    let hash1 = sha512_hash(input);
+    let hash2 = sha512_hash(&hash1[..]);
+
+    let mut result: [u8; 4]  = [0; 4];
+    result.clone_from_slice(&hash2[0..4]);
+
+    result
 }
 
 #[cfg(test)]

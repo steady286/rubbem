@@ -404,7 +404,7 @@ fn read_var_int_usize<A: Read>(source: &mut A, max_value: usize) -> Result<usize
     read_var_int(source, max_value as u64).map(|v| v as usize)
 }
 
-fn read_var_int<A: Read>(source: &mut A, max_value: u64) -> Result<u64,ParseError> {
+pub fn read_var_int<A: Read>(source: &mut A, max_value: u64) -> Result<u64,ParseError> {
     let first_byte: u8 = try!(read_u8(source));
 
     let value = match first_byte {

@@ -1,15 +1,16 @@
 extern crate byteorder;
-extern crate crypto;
 extern crate encoding;
 extern crate rand;
 
 mod macros;
 
+mod address;
 mod channel;
 mod checksum;
 mod chunk;
 mod config;
 mod connection;
+mod elliptic;
 mod inventory;
 mod known_nodes;
 mod message;

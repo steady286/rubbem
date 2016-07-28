@@ -11,7 +11,9 @@ pub use self::handler::MessageHandler;
 pub use self::responder::MessageResponder;
 pub use self::verify::MessageVerifier;
 pub use self::read::read_message;
+pub use self::read::read_var_int;
 pub use self::write::write_message;
+pub use self::write::write_var_int_64;
 pub use self::sender::Sender;
 pub use self::sender::MessageSendError;
 

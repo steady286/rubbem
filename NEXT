@@ -1,3 +1,4 @@
+Create a PublicPrivateKeyPair -> PrivateAddress (vs PublicAddress)
 How can we look up an address to send a message
 Actually encrypt outgoing messages
 What if we receive the same object or addr message more than once? Tests - causes a problem for KnownNode

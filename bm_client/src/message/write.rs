@@ -305,7 +305,7 @@ fn write_var_int_usize(output: &mut Vec<u8>, value: usize) {
     write_var_int_64(output, value as u64);
 }
 
-fn write_var_int_64(output: &mut Vec<u8>, value: u64) {
+pub fn write_var_int_64(output: &mut Vec<u8>, value: u64) {
     if value <= 0xffffffff {
         write_var_int_32(output, value as u32);
     } else {
