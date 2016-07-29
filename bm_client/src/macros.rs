@@ -8,6 +8,15 @@ macro_rules! break_on_err (
     })
 );
 
+macro_rules! continue_on_err (
+    ($expr:expr) => ({
+        match $expr {
+            Ok(val) => val,
+            Err(_) => continue
+        }
+    })
+);
+
 macro_rules! return_on_err {
     ($expr:expr) => ({
         match $expr {

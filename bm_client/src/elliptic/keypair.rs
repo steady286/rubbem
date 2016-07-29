@@ -18,8 +18,8 @@ pub struct PrivateKey {
 }
 
 pub struct KeyPair {
-    public: PublicKey,
-    private: PrivateKey
+    pub public: PublicKey,
+    pub private: PrivateKey
 }
 
 pub fn create_key_pair() -> Result<KeyPair, ()> {

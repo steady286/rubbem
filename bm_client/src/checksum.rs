@@ -2,6 +2,7 @@ extern crate crypto;
 
 use byteorder::{BigEndian,ReadBytesExt};
 use self::crypto::digest::Digest;
+use self::crypto::ripemd160::Ripemd160;
 use self::crypto::sha2::Sha512;
 use std::io::Cursor;
 
@@ -11,6 +12,17 @@ pub fn sha512_hash(input: &[u8]) -> [u8; 64] {
     hasher.input(input);
 
     let mut result: [u8; 64] = [0; 64];
+    hasher.result(&mut result[..]);
+
+    result
+}
+
+pub fn ripe160_hash(input: &[u8]) -> [u8; 20] {
+    let mut hasher = Ripemd160::new();
+
+    hasher.input(input);
+
+    let mut result: [u8; 20] = [0; 20];
     hasher.result(&mut result[..]);
 
     result
@@ -33,6 +45,11 @@ pub fn double_sha512_checksum_bytes(input: &[u8]) -> [u8; 4] {
     result.clone_from_slice(&hash2[0..4]);
 
     result
+}
+
+pub fn ripe_sha(input: &[u8]) -> [u8; 20] {
+    let sha = sha512_hash(input);
+    ripe160_hash(&sha[..])
 }
 
 #[cfg(test)]

@@ -1,6 +1,6 @@
 extern crate rust_base58;
 
-use checksum::double_sha512_checksum_bytes;
+use checksum::{double_sha512_checksum_bytes,ripe_sha};
 use elliptic::keypair::{KeyPair,create_key_pair};
 use message::read_var_int;
 use message::write_var_int_64;
@@ -171,27 +171,35 @@ struct PrivateAddress {
     encrypt: KeyPair
 }
 
-fn create_random_private_address(max_attempts: u64) -> PrivateAddress {
-    loop {
-        let sign = create_key_pair();
-        let encrypt = create_key_pair();
+fn create_random_private_address(max_attempts: u64) -> Result<PrivateAddress,()> {
+    for x in 0..max_attempts {
+        println!("Attempt: {}", x);
+        let sign = continue_on_err!(create_key_pair());
+        let encrypt = continue_on_err!(create_key_pair());
 
-        if sign.is_err() || encrypt.is_err() {
-            continue;
-        }
+        let mut ripe_input: Vec<u8> = vec![];
+        ripe_input.extend(sign.public.get_bytes().iter());
+        ripe_input.extend(encrypt.public.get_bytes().iter());
 
-        return PrivateAddress {
-            sign: sign.unwrap(),
-            encrypt: encrypt.unwrap()
+        let ripe = ripe_sha(&ripe_input[..]);
+
+        let leading_zero_count = ripe.iter().take_while(|&&b| b == 0).count();
+
+        if leading_zero_count > 0 {
+            return Ok(PrivateAddress {
+                sign: sign,
+                encrypt: encrypt
+            })
         }
     }
+
+    Err(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::Address;
-    use super::decode_address;
-    use super::encode_address;
+    use super::{decode_address,encode_address,create_random_private_address};
 
     #[test]
     fn test_decode_good_address() {
@@ -221,5 +229,10 @@ mod tests {
 
         let encoded_address = encode_address(&address).unwrap();
         assert_eq!(encoded_address, "BM-2cUHyNbNkrHzcxBCNhJdEAHzqka6SbefLT");
+    }
+
+    #[test]
+    fn test_create_private_address() {
+        let private_address = create_random_private_address(10);
     }
 }
