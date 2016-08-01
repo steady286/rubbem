@@ -1,6 +1,7 @@
 extern crate rust_base58;
 
 use checksum::{double_sha512_checksum_bytes,ripe_sha};
+use elliptic::curve2::Curve;
 use elliptic::keypair::{KeyPair,create_key_pair};
 use message::read_var_int;
 use message::write_var_int_64;
@@ -166,16 +167,18 @@ fn remove_all_leading_zeros(ripe: Vec<u8>) -> Vec<u8> {
     ripe.into_iter().skip_while(|&b| b == 0).collect()
 }
 
-struct PrivateAddress {
+pub struct PrivateAddress {
     sign: KeyPair,
     encrypt: KeyPair
 }
 
-fn create_random_private_address(max_attempts: u64) -> Result<PrivateAddress,()> {
+pub fn create_random_private_address(max_attempts: u64) -> Result<PrivateAddress,()> {
+    println!("Max attempts: {}", max_attempts);
+    let curve = Curve::new();
     for x in 0..max_attempts {
         println!("Attempt: {}", x);
-        let sign = continue_on_err!(create_key_pair());
-        let encrypt = continue_on_err!(create_key_pair());
+        let sign = continue_on_err!(create_key_pair(&curve));
+        let encrypt = continue_on_err!(create_key_pair(&curve));
 
         let mut ripe_input: Vec<u8> = vec![];
         ripe_input.extend(sign.public.get_bytes().iter());
@@ -233,6 +236,6 @@ mod tests {
 
     #[test]
     fn test_create_private_address() {
-        let private_address = create_random_private_address(10);
+        let private_address = create_random_private_address(1000);
     }
 }

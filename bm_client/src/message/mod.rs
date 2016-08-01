@@ -347,10 +347,6 @@ mod tests {
         let mut output = vec![];
         write_message(&mut output, &message);
 
-        println!("");
-        println!("Exp: {:?}", expected);
-        println!("Out: {:?}", output);
-
         assert_eq!(expected, output);
 
         let mut cursor = Cursor::new(output);

@@ -1,5 +1,5 @@
 use rand::{OsRng,Rng};
-use elliptic::curve::create_public_key;
+use elliptic::curve2::{Curve,create_public_key};
 
 pub struct PublicKey {
     bytes: [u8; 65]
@@ -22,12 +22,12 @@ pub struct KeyPair {
     pub private: PrivateKey
 }
 
-pub fn create_key_pair() -> Result<KeyPair, ()> {
+pub fn create_key_pair(curve: &Curve) -> Result<KeyPair, ()> {
     let mut rng = OsRng::new().unwrap();
     let mut private_bytes: [u8; 32] = [0; 32];
     rng.fill_bytes(&mut private_bytes);
 
-    let public_bytes = try!(create_public_key(&private_bytes));
+    let public_bytes = try!(create_public_key(curve, &private_bytes));
 
     Ok(KeyPair {
         public: PublicKey { bytes: public_bytes },
@@ -37,10 +37,12 @@ pub fn create_key_pair() -> Result<KeyPair, ()> {
 
 #[cfg(test)]
 mod tests {
+    use elliptic::curve2::Curve;
     use super::create_key_pair;
 
     #[test]
     fn test_create_key_pair() {
-        let key_pair = create_key_pair();
+        let curve = Curve::new();
+        let key_pair = create_key_pair(&curve);
     }
 }
