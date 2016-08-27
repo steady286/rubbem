@@ -17,6 +17,7 @@ mod message;
 mod net;
 mod peer;
 mod persist;
+mod serial;
 mod timegen;
 
 use config::Config;

@@ -1,10 +1,10 @@
 extern crate rust_base58;
 
 use checksum::{double_sha512_checksum_bytes,ripe_sha};
-use elliptic::curve2::Curve;
+use elliptic::curve::Curve;
 use elliptic::keypair::{KeyPair,create_key_pair};
-use message::read_var_int;
-use message::write_var_int_64;
+use serial::basic::read::read_var_int;
+use serial::basic::write::write_var_int_64;
 use self::rust_base58::base58::{FromBase58,FromBase58Error,ToBase58};
 use std::io::{Cursor,Read};
 use std::iter::repeat;
@@ -78,12 +78,10 @@ pub fn decode_address(input: &str) -> Result<Address, AddressDecodeError> {
             // The last 20 bytes
             bytes.split_off(byte_count - 20)
         },
-        2 | 3 => {
-            match byte_count {
-                0...17 => return Err(AddressDecodeError::RipeTooShort(byte_count)),
-                18...20 => repeat(0).take(20 - byte_count).chain(bytes.into_iter()).collect(), // Pad with 0
-                _ => return Err(AddressDecodeError::RipeTooLong(byte_count))
-            }
+        2 | 3 => match byte_count {
+            0...17 => return Err(AddressDecodeError::RipeTooShort(byte_count)),
+            18...20 => repeat(0).take(20 - byte_count).chain(bytes.into_iter()).collect(), // Pad with 0
+            _ => return Err(AddressDecodeError::RipeTooLong(byte_count))
         },
         4 => match bytes[0] {
             0 => return Err(AddressDecodeError::RipeEncodingProblem),

@@ -6,7 +6,6 @@ authors = ["Chris Greenaway <cjgreenaway@gmail.com>"]
 [dependencies]
 byteorder = "0.5"
 encoding = "0.2"
-num = "0.1.34"
 rand = "0.3"
 rust-base58 = "0.0.4"
 rust-crypto = "0.2"

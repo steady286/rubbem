@@ -1,5 +1,5 @@
 use rand::{OsRng,Rng};
-use elliptic::curve2::{Curve,create_public_key};
+use elliptic::curve::{Curve,create_public_key};
 
 pub struct PublicKey {
     bytes: [u8; 65]
@@ -37,7 +37,7 @@ pub fn create_key_pair(curve: &Curve) -> Result<KeyPair, ()> {
 
 #[cfg(test)]
 mod tests {
-    use elliptic::curve2::Curve;
+    use elliptic::curve::Curve;
     use super::create_key_pair;
 
     #[test]

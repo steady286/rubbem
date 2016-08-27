@@ -1,5 +1,7 @@
 use checksum::sha512_hash;
-use message::{InventoryVector,Message,write_message};
+use message::{InventoryVector,Message};
+use serial::message::write_message;
+
 use persist::{InventoryIterator,Persister};
 
 #[derive(Clone)]

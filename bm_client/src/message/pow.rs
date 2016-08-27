@@ -1,7 +1,7 @@
 use byteorder::{BigEndian,ReadBytesExt,WriteBytesExt};
 use checksum::sha512_hash;
 use message::{ObjectData,MAX_PAYLOAD_LENGTH_FOR_OBJECT};
-use message::write::write_object_message_data;
+use serial::message::write_object_message_data;
 use std::cmp::max;
 use std::io::Cursor;
 use std::time::SystemTime;

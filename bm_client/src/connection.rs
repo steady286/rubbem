@@ -1,5 +1,6 @@
 use channel::{ConstrainedReceiver,ConstrainedSender,constrained_channel};
-use message::{Message,MessageHandler,ParseError,read_message,write_message,VersionData};
+use message::{Message,MessageHandler,VersionData};
+use serial::message::{MessageSerialError,read_message,write_message};
 use std::io::{Error,Write};
 use std::net::{Shutdown,SocketAddr,TcpStream};
 use std::sync::{Arc,RwLock};
@@ -136,9 +137,9 @@ fn create_thread<F>(name: String, state: StateHolder, thread_body: F) -> Result<
     })
 }
 
-fn read_thread_body(mut stream: TcpStream, state_chan: SyncSender<Result<Message,ParseError>>) -> () {
+fn read_thread_body(mut stream: TcpStream, state_chan: SyncSender<Result<Message,MessageSerialError>>) -> () {
     loop {
-        let message: Result<Message,ParseError> = read_message(&mut stream);
+        let message: Result<Message,MessageSerialError> = read_message(&mut stream);
         let parse_error = message.is_err();
 
         state_chan.send(message).unwrap();
@@ -149,7 +150,7 @@ fn read_thread_body(mut stream: TcpStream, state_chan: SyncSender<Result<Message
     }
 }
 
-fn state_thread_body(state_holder: StateHolder, read_chan: Receiver<Result<Message,ParseError>>, handler_chan: ConstrainedSender<Message>) -> () {
+fn state_thread_body(state_holder: StateHolder, read_chan: Receiver<Result<Message,MessageSerialError>>, handler_chan: ConstrainedSender<Message>) -> () {
     loop {
         let current_state = state_holder.get_state();
 
