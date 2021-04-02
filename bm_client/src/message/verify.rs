@@ -33,13 +33,13 @@ impl MessageVerifier {
     pub fn verify(&self, message: &Message) -> Result<(), MessageVerifierError> {
         match message {
             &Message::Version(VersionData { nonce, version, timestamp, .. }) => {
-                try!(self.check_nonce(nonce));
-                try!(self.check_version_number(version));
-                try!(self.check_clock_difference(timestamp));
+                self.check_nonce(nonce)?;
+                self.check_version_number(version)?;
+                self.check_clock_difference(timestamp)?;
                 Ok(())
             },
             &Message::Object(ref object_data @ ObjectData { .. }) => {
-                try!(self.check_pow(object_data));
+                self.check_pow(object_data)?;
                 Ok(())
             },
             _ => Ok(())
@@ -57,7 +57,7 @@ impl MessageVerifier {
 
     fn check_version_number(&self, version: u32) -> Result<(), MessageVerifierError> {
         match version {
-            0 ... 2 => Err(MessageVerifierError::OldVersion),
+            0..=1 => Err(MessageVerifierError::OldVersion),
             _ => Ok(())
         }
     }
@@ -78,7 +78,7 @@ impl MessageVerifier {
     fn check_pow(&self, object_data: &ObjectData) -> Result<(), MessageVerifierError> {
         let pow_config = network_pow_config();
         let pow = ProofOfWork::new(self.time_type);
-        try!(pow.verify(object_data, pow_config));
+        pow.verify(object_data, pow_config)?;
         Ok(())
     }
 }

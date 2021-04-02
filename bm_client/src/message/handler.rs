@@ -42,8 +42,8 @@ impl MessageHandler {
     pub fn handle<F>(&mut self, message: Message, send: F) -> Result<(), MessageHandlingError>
         where F : Fn(Message) -> Result<(), SendError<Message>>
     {
-        try!(self.message_verifier.verify(&message));
-        try!(self.message_responder.respond(message, send));
+        self.message_verifier.verify(&message)?;
+        self.message_responder.respond(message, send)?;
         Ok(())
     }
 }

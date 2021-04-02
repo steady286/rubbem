@@ -51,16 +51,16 @@ impl MessageResponder {
     {
         match message {
             Message::Version(VersionData { services, addr_from, streams, .. }) => {
-                try!(self.add_known_node(streams, services, addr_from));
-                try!(send(Message::Verack));
+                self.add_known_node(streams, services, addr_from)?;
+                send(Message::Verack)?;
             },
             Message::Verack => {
-                try!(send(self.create_addr_message()));
+                send(self.create_addr_message())?;
 
                 let inventory_iterator = self.inventory.iterator();
                 let chunk_iterator = inventory_iterator.chunk(MAX_INV_COUNT);
                 for inventory_chunk in chunk_iterator {
-                    try!(send(self.create_inv_message(inventory_chunk)));
+                    send(self.create_inv_message(inventory_chunk))?;
                 }
             },
             Message::Addr { addr_list } => {
@@ -70,12 +70,12 @@ impl MessageResponder {
             },
             Message::Inv { inventory: inventory_chunk } => {
                 let get_data = self.inventory.unknown(inventory_chunk);
-                try!(send(self.create_getdata_message(get_data)));
+                send(self.create_getdata_message(get_data))?;
             },
             Message::GetData { inventory: inventory_chunk } => {
                 for inventory_vector in inventory_chunk {
                     if let Some(object_message) = self.inventory.get_object_message(&inventory_vector) {
-                        try!(send(object_message));
+                        send(object_message)?;
                     }
                 }
             },

@@ -85,7 +85,7 @@ impl ProofOfWork {
         let payload_with_nonce_length = payload_with_nonce.len() as u32;
 
         let expiry = object_data.expiry;
-        let target = try!(self.target(payload_with_nonce_length, expiry, pow_config));
+        let target = self.target(payload_with_nonce_length, expiry, pow_config)?;
 
         generate_pow_given_target(payload_without_nonce, target)
     }
@@ -101,7 +101,7 @@ impl ProofOfWork {
         let payload_with_nonce_length = payload_with_nonce.len() as u32;
 
         let expiry = object_data.expiry;
-        let target = try!(self.target(payload_with_nonce_length, expiry, pow_config));
+        let target = self.target(payload_with_nonce_length, expiry, pow_config)?;
 
         let initial_hash = sha512_hash(payload_without_nonce);
         assert!(initial_hash.len() == 64);
@@ -123,7 +123,7 @@ impl ProofOfWork {
     fn target(&self, payload_length: u32, expiry: SystemTime, pow_config: ProofOfWorkConfig) -> Result<u64, TimeToLiveError> {
         assert!(payload_length > 0);
         assert!(payload_length <= MAX_PAYLOAD_LENGTH_FOR_OBJECT);
-        let ttl = try!(self.ttl(expiry, &pow_config));
+        let ttl = self.ttl(expiry, &pow_config)?;
 
         Ok(target_from_ttl(payload_length, ttl, pow_config.trials_per_byte, pow_config.extra_bytes))
     }
@@ -132,8 +132,8 @@ impl ProofOfWork {
         let now: SystemTime = get_time(&self.time_type);
 
         let ttl = match expiry.duration_since(now) {
-            Ok(duration) => try!(fit_in_i64(duration.as_secs(), TimeToLiveError::ObjectLivesTooLong)),
-            Err(time_error) => -(try!(fit_in_i64(time_error.duration().as_secs(), TimeToLiveError::ObjectLivesTooLong)))
+            Ok(duration) => fit_in_i64(duration.as_secs(), TimeToLiveError::ObjectLivesTooLong)?,
+            Err(time_error) => -(fit_in_i64(time_error.duration().as_secs(), TimeToLiveError::ObjectLivesTooLong))?
         };
 
         if ttl < pow_config.minimum_ttl {

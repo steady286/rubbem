@@ -32,7 +32,7 @@ pub struct ConstrainedReceiver<T: MemorySize> {
 
 impl<T: MemorySize> ConstrainedReceiver<T> {
     pub fn recv(&self) -> Result<T, RecvError> {
-        let t = try!(self.receiver.recv());
+        let t = self.receiver.recv()?;
         let byte_count = t.byte_count();
 
         self.current_size.fetch_sub(byte_count, Ordering::SeqCst);

@@ -30,20 +30,20 @@ pub enum ParseError {
 }
 
 pub fn read_message<A: Read>(source: &mut A) -> Result<Message,ParseError> {
-    let magic = try!(read_u32(source));
+    let magic = read_u32(source)?;
     if magic != MAGIC {
         return Err(ParseError::FailedMagic);
     }
 
-    let command = try!(read_command(source));
-    let length_bytes = try!(read_u32(source));
-    let expected_checksum = try!(read_u32(source));
+    let command = read_command(source)?;
+    let length_bytes = read_u32(source)?;
+    let expected_checksum = read_u32(source)?;
 
     if length_bytes > MAX_PAYLOAD_LENGTH {
         return Err(ParseError::PayloadLength);
     }
 
-    let payload = try!(read_bytes(source, length_bytes as usize));
+    let payload = read_bytes(source, length_bytes as usize)?;
     let calculated_checksum = sha512_checksum(&payload);
     if calculated_checksum != expected_checksum {
         return Err(ParseError::ChecksumMismatch);
@@ -53,8 +53,8 @@ pub fn read_message<A: Read>(source: &mut A) -> Result<Message,ParseError> {
 }
 
 fn read_command<A: Read>(source: &mut A) -> Result<String,ParseError> {
-    let command_bytes = try!(read_bytes(source, 12));
-    let non_zero_bytes = try!(remove_zeros(command_bytes));
+    let command_bytes = read_bytes(source, 12)?;
+    let non_zero_bytes = remove_zeros(command_bytes)?;
     ASCII.decode(&non_zero_bytes, DecoderTrap::Strict).map_err(|_| ParseError::AsciiDecode)
 }
 
@@ -70,12 +70,12 @@ fn remove_zeros(bytes: Vec<u8>) -> Result<Vec<u8>,ParseError> {
 
 fn read_payload(command: &str, bytes: &[u8]) -> Result<Message,ParseError> {
     Ok(match command {
-        "addr" => try!(read_addr_message(bytes)),
-        "getdata" => try!(read_getdata_message(bytes)),
-        "inv" => try!(read_inv_message(bytes)),
-        "version" => try!(read_version_message(bytes)),
-        "verack" => try!(read_verack_message(bytes)),
-        "object" => try!(read_object_message(bytes)),
+        "addr" => read_addr_message(bytes)?,
+        "getdata" => read_getdata_message(bytes)?,
+        "inv" => read_inv_message(bytes)?,
+        "version" => read_version_message(bytes)?,
+        "verack" => read_verack_message(bytes)?,
+        "object" => read_object_message(bytes)?,
         _ => return Err(ParseError::UnknownCommand)
     })
 }
@@ -83,11 +83,11 @@ fn read_payload(command: &str, bytes: &[u8]) -> Result<Message,ParseError> {
 fn read_addr_message(bytes: &[u8]) -> Result<Message,ParseError> {
     let mut cursor = Cursor::new(bytes);
 
-    let count = try!(read_var_int_usize(&mut cursor, MAX_NODES_COUNT));
+    let count = read_var_int_usize(&mut cursor, MAX_NODES_COUNT)?;
     let mut addr_list: Vec<KnownNode> = Vec::with_capacity(count);
 
     for _ in 0..count {
-        let known_node = try!(read_known_node(&mut cursor));
+        let known_node = read_known_node(&mut cursor)?;
         addr_list.push(known_node);
     }
 
@@ -97,10 +97,10 @@ fn read_addr_message(bytes: &[u8]) -> Result<Message,ParseError> {
 }
 
 fn read_known_node<A: Read>(source: &mut A) -> Result<KnownNode,ParseError> {
-    let last_seen = try!(read_timestamp(source));
-    let stream = try!(read_u32(source));
-    let services = try!(read_u64(source));
-    let socket_addr = try!(read_address_and_port(source));
+    let last_seen = read_timestamp(source)?;
+    let stream = read_u32(source)?;
+    let services = read_u64(source)?;
+    let socket_addr = read_address_and_port(source)?;
 
     Ok(KnownNode {
         last_seen: last_seen,
@@ -113,11 +113,11 @@ fn read_known_node<A: Read>(source: &mut A) -> Result<KnownNode,ParseError> {
 fn read_getdata_message(bytes: &[u8]) -> Result<Message,ParseError> {
     let mut cursor = Cursor::new(bytes);
 
-    let count = try!(read_var_int_usize(&mut cursor, MAX_GETDATA_COUNT));
+    let count = read_var_int_usize(&mut cursor, MAX_GETDATA_COUNT)?;
     let mut inventory: Vec<InventoryVector> = Vec::with_capacity(count);
 
     for _ in 0..count {
-        let inventory_vector = try!(read_inventory_vector(&mut cursor));
+        let inventory_vector = read_inventory_vector(&mut cursor)?;
         inventory.push(inventory_vector);
     }
 
@@ -129,11 +129,11 @@ fn read_getdata_message(bytes: &[u8]) -> Result<Message,ParseError> {
 fn read_inv_message(bytes: &[u8]) -> Result<Message,ParseError> {
     let mut cursor = Cursor::new(bytes);
 
-    let count = try!(read_var_int_usize(&mut cursor, MAX_INV_COUNT));
+    let count = read_var_int_usize(&mut cursor, MAX_INV_COUNT)?;
     let mut inventory: Vec<InventoryVector> = Vec::with_capacity(count);
 
     for _ in 0..count {
-        let inventory_vector = try!(read_inventory_vector(&mut cursor));
+        let inventory_vector = read_inventory_vector(&mut cursor)?;
         inventory.push(inventory_vector);
     }
 
@@ -143,7 +143,7 @@ fn read_inv_message(bytes: &[u8]) -> Result<Message,ParseError> {
 }
 
 fn read_inventory_vector<A: Read>(source: &mut A) -> Result<InventoryVector,ParseError> {
-    let hash = try!(read_bytes(source, 32));
+    let hash = read_bytes(source, 32)?;
     Ok(InventoryVector {
         hash: hash
     })
@@ -152,16 +152,16 @@ fn read_inventory_vector<A: Read>(source: &mut A) -> Result<InventoryVector,Pars
 fn read_version_message(bytes: &[u8]) -> Result<Message,ParseError> {
     let mut cursor = Cursor::new(bytes);
 
-    let version = try!(read_u32(&mut cursor));
-    let services = try!(read_u64(&mut cursor));
-    let timestamp = try!(read_timestamp(&mut cursor));
-    try!(read_u64(&mut cursor)); // recv_services
-    let addr_recv = try!(read_address_and_port(&mut cursor));
-    try!(read_u64(&mut cursor)); // from_services
-    let addr_from = try!(read_address_and_port(&mut cursor));
-    let nonce = try!(read_u64(&mut cursor));
-    let user_agent = try!(read_var_str(&mut cursor, 5000));
-    let streams = try!(read_var_int_list(&mut cursor, 160000));
+    let version = read_u32(&mut cursor)?;
+    let services = read_u64(&mut cursor)?;
+    let timestamp = read_timestamp(&mut cursor)?;
+    read_u64(&mut cursor)?; // recv_services
+    let addr_recv = read_address_and_port(&mut cursor)?;
+    read_u64(&mut cursor)?; // from_services
+    let addr_from = read_address_and_port(&mut cursor)?;
+    let nonce = read_u64(&mut cursor)?;
+    let user_agent = read_var_str(&mut cursor, 5000)?;
+    let streams = read_var_int_list(&mut cursor, 160000)?;
 
     // TODO - check no more data - here and in other messages
 
@@ -188,14 +188,14 @@ fn read_verack_message(bytes: &[u8]) -> Result<Message,ParseError> {
 fn read_object_message(bytes: &[u8]) -> Result<Message,ParseError> {
     let mut cursor = Cursor::new(bytes);
 
-    let nonce = try!(read_u64(&mut cursor));
-    let expiry = try!(read_timestamp(&mut cursor));
-    let object_type = try!(read_u32(&mut cursor));
-    let version = try!(read_var_int(&mut cursor, u64::max_value()));
-    let stream = try!(read_var_int(&mut cursor, u32::max_value() as u64)) as u32;
+    let nonce = read_u64(&mut cursor)?;
+    let expiry = read_timestamp(&mut cursor)?;
+    let object_type = read_u32(&mut cursor)?;
+    let version = read_var_int(&mut cursor, u64::max_value())?;
+    let stream = read_var_int(&mut cursor, u32::max_value() as u64)? as u32;
 
     let object_position = cursor.position() as usize;
-    let object = try!(read_object(object_type, version, &bytes[object_position..]));
+    let object = read_object(object_type, version, &bytes[object_position..])?;
 
     Ok(Message::Object(ObjectData {
         nonce: nonce,
@@ -218,8 +218,8 @@ fn read_object(object_type: u32, version: u64, bytes: &[u8]) -> Result<Object,Pa
 
 fn read_getpubkey(version: u64, bytes: &[u8]) -> Result<Object,ParseError> {
     match version {
-        3 => Ok(Object::GetPubKey(try!(read_getpubkey_v3(bytes)))),
-        4 => Ok(Object::GetPubKey(try!(read_getpubkey_v4(bytes)))),
+        3 => Ok(Ok(Object::GetPubKey(read_getpubkey_v3(bytes)?)))?,
+        4 => Ok(Ok(Object::GetPubKey(read_getpubkey_v4(bytes)?)))?,
         _ => Err(ParseError::UnknownObjectVersion)
     }
 }
@@ -242,9 +242,9 @@ fn read_getpubkey_v4(bytes: &[u8]) -> Result<GetPubKey,ParseError> {
 
 fn read_pubkey(version: u64, bytes: &[u8]) -> Result<Object,ParseError> {
     match version {
-        2 => Ok(Object::PubKey(try!(read_pubkey_v2(bytes)))),
-        3 => Ok(Object::PubKey(try!(read_pubkey_v3(bytes)))),
-        4 => Ok(Object::PubKey(try!(read_pubkey_v4(bytes)))),
+        2 => Ok(Ok(Object::PubKey(read_pubkey_v2(bytes)?)))?,
+        3 => Ok(Ok(Object::PubKey(read_pubkey_v3(bytes)?)))?,
+        4 => Ok(Ok(Object::PubKey(read_pubkey_v4(bytes)?)))?,
         _ => Err(ParseError::UnknownObjectVersion)
     }
 }
@@ -255,9 +255,9 @@ fn read_pubkey_v2(bytes: &[u8]) -> Result<PubKey,ParseError> {
     }
 
     let mut cursor = Cursor::new(bytes);
-    let behaviour_bitfield = try!(read_u32(&mut cursor));
-    let public_signing_key = try!(read_bytes(&mut cursor, 64));
-    let public_encryption_key = try!(read_bytes(&mut cursor, 64));
+    let behaviour_bitfield = read_u32(&mut cursor)?;
+    let public_signing_key = read_bytes(&mut cursor, 64)?;
+    let public_encryption_key = read_bytes(&mut cursor, 64)?;
 
     Ok(PubKey::V2 {
         behaviour_bitfield: behaviour_bitfield,
@@ -272,12 +272,12 @@ fn read_pubkey_v3(bytes: &[u8]) -> Result<PubKey,ParseError> {
     }
 
     let mut cursor = Cursor::new(bytes);
-    let behaviour_bitfield = try!(read_u32(&mut cursor));
-    let public_signing_key = try!(read_bytes(&mut cursor, 64));
-    let public_encryption_key = try!(read_bytes(&mut cursor, 64));
-    let nonce_trials_per_byte = try!(read_u64(&mut cursor));
-    let extra_bytes = try!(read_u64(&mut cursor));
-    let signature = try!(read_var_int_bytes(&mut cursor));
+    let behaviour_bitfield = read_u32(&mut cursor)?;
+    let public_signing_key = read_bytes(&mut cursor, 64)?;
+    let public_encryption_key = read_bytes(&mut cursor, 64)?;
+    let nonce_trials_per_byte = read_u64(&mut cursor)?;
+    let extra_bytes = read_u64(&mut cursor)?;
+    let signature = read_var_int_bytes(&mut cursor)?;
 
     Ok(PubKey::V3 {
         behaviour_bitfield: behaviour_bitfield,
@@ -311,8 +311,8 @@ fn read_msg(bytes: &[u8]) -> Result<Object,ParseError> {
 
 fn read_broadcast(version: u64, bytes: &[u8]) -> Result<Object,ParseError> {
     match version {
-        4 => Ok(Object::Broadcast(try!(read_broadcast_v4(bytes)))),
-        5 => Ok(Object::Broadcast(try!(read_broadcast_v5(bytes)))),
+        4 => Ok(Ok(Object::Broadcast(read_broadcast_v4(bytes)?)))?,
+        5 => Ok(Ok(Object::Broadcast(read_broadcast_v5(bytes)?)))?,
         _ => Err(ParseError::UnknownObjectVersion)
     }
 }
@@ -343,15 +343,15 @@ const NO_FLOW: u32 = 0;
 const GLOBAL_SCOPE: u32 = 0xe;
 
 fn read_address_and_port<A: Read>(source: &mut A) -> Result<SocketAddr,ParseError> {
-    let a = try!(read_u16(source));
-    let b = try!(read_u16(source));
-    let c = try!(read_u16(source));
-    let d = try!(read_u16(source));
-    let e = try!(read_u16(source));
-    let f = try!(read_u16(source));
-    let g = try!(read_u16(source));
-    let h = try!(read_u16(source));
-    let port = try!(read_u16(source));
+    let a = read_u16(source)?;
+    let b = read_u16(source)?;
+    let c = read_u16(source)?;
+    let d = read_u16(source)?;
+    let e = read_u16(source)?;
+    let f = read_u16(source)?;
+    let g = read_u16(source)?;
+    let h = read_u16(source)?;
+    let port = read_u16(source)?;
 
     let v6_ip = Ipv6Addr::new(a, b, c, d, e, f, g, h);
 
@@ -364,7 +364,7 @@ fn read_address_and_port<A: Read>(source: &mut A) -> Result<SocketAddr,ParseErro
 }
 
 fn read_timestamp<A: Read>(source: &mut A) -> Result<SystemTime,ParseError> {
-    let secs = try!(read_i64(source));
+    let secs = read_i64(source)?;
     Ok(get_time_from_secs(secs))
 }
 
@@ -377,23 +377,23 @@ fn get_time_from_secs(secs: i64) -> SystemTime {
 }
 
 fn read_var_int_bytes<A: Read>(source: &mut A) -> Result<Vec<u8>,ParseError> {
-    let byte_count = try!(read_var_int_usize(source, usize::max_value()));
-    Ok(try!(read_bytes(source, byte_count)))
+    let byte_count = read_var_int_usize(source, usize::max_value())?;
+    Ok(read_bytes(source, byte_count))?
 }
 
 fn read_var_str<A: Read>(source: &mut A, max_length: usize) -> Result<String,ParseError> {
-    let length = try!(read_var_int_usize(source, max_length));
+    let length = read_var_int_usize(source, max_length)?;
 
-    let string_bytes = try!(read_bytes(source, length));
+    let string_bytes = read_bytes(source, length)?;
     ASCII.decode(&string_bytes, DecoderTrap::Strict).map_err(|_| ParseError::BadAscii)
 }
 
 fn read_var_int_list<A: Read>(source: &mut A, max_count: usize) -> Result<Vec<u64>,ParseError> {
-    let count = try!(read_var_int_usize(source, max_count));
+    let count = read_var_int_usize(source, max_count)?;
 
     let mut int_list: Vec<u64> = Vec::with_capacity(count);
     for _ in 0..count {
-        let int = try!(read_var_int(source, u64::max_value()));
+        let int = read_var_int(source, u64::max_value())?;
         int_list.push(int);
     }
 
@@ -405,14 +405,13 @@ fn read_var_int_usize<A: Read>(source: &mut A, max_value: usize) -> Result<usize
 }
 
 fn read_var_int<A: Read>(source: &mut A, max_value: u64) -> Result<u64,ParseError> {
-    let first_byte: u8 = try!(read_u8(source));
+    let first_byte: u8 = read_u8(source)?;
 
     let value = match first_byte {
-        byte @ 0...0xfc => byte as u64,
-        0xfd => try!(read_u16(source)) as u64,
-        0xfe => try!(read_u32(source)) as u64,
-        0xff => try!(read_u64(source)),
-        _ => unreachable!()
+        byte @ 0..=0xfc => byte as u64,
+        0xfd => read_u16(source)? as u64,
+        0xfe => read_u32(source)? as u64,
+        0xff => read_u64(source)?,
     };
 
     if value > max_value {
@@ -425,7 +424,7 @@ fn read_var_int<A: Read>(source: &mut A, max_value: u64) -> Result<u64,ParseErro
 fn read_bytes<A: Read>(source: &mut A, count: usize) -> Result<Vec<u8>,ParseError> {
     let mut take = source.take(count as u64);
     let mut bytes: Vec<u8> = Vec::with_capacity(count);
-    let read_count = try!(take.read_to_end(&mut bytes).map_err(|_| ParseError::UnexpectedPayloadEnd));
+    let read_count = take.read_to_end(&mut bytes).map_err(|_| ParseError::UnexpectedPayloadEnd)?;
 
     if read_count != count || bytes.len() != count {
         return Err(ParseError::UnexpectedPayloadEnd);

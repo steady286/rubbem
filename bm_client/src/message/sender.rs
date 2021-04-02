@@ -35,7 +35,7 @@ impl Sender {
         };
 
         let pow = ProofOfWork::new(TimeType::Real);
-        let nonce = try!(pow.generate(&object_data_wrong_nonce, network_pow_config()));
+        let nonce = pow.generate(&object_data_wrong_nonce, network_pow_config())?;
 
         let object_data_with_nonce = ObjectData { nonce: nonce, .. object_data_wrong_nonce };
 
